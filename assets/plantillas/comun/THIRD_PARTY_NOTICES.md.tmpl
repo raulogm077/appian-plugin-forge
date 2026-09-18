@@ -1,0 +1,31 @@
+# Third-party notices — {{NOMBRE}} {{VERSION}}
+
+**REVISAR ANTES DE PUBLICAR.** Este fichero lo genera el andamiaje con lo que
+declara el contrato, que es el punto de partida, no el resultado. Dos cosas hay
+que cerrarlas a mano antes de enviar el plug-in a revisión:
+
+1. **La licencia de cada dependencia**, abajo. Copyleft es rechazo automático:
+   AppMarket prohíbe *cualquier* librería de terceros bajo licencia copyleft «o
+   términos similares» (docs.appian.com, *AppMarket Submission Policies for
+   Plug-Ins*).
+2. **Que `LICENSE` sea de verdad la licencia que quieres publicar.** El
+   andamiaje emite MIT por defecto; nadie lo ha confirmado por ti.
+
+La lista autoritativa de lo que acaba dentro del artefacto —con transitivas y
+texto de licencia— es el SBOM: `./gradlew cyclonedxDirectBom` lo escribe en
+`build/reports/sbom/{{NOMBRE_ARTEFACTO}}-sbom.json`. Este documento es el
+resumen legible; el SBOM es el inventario.
+
+## Dependencias declaradas en el contrato
+
+{{NOTICIAS_DEPENDENCIAS}}
+
+## Provistas por el contenedor
+
+No viajan dentro del JAR: se declaran `compileOnly` y las aporta Appian en
+tiempo de ejecución. Empaquetarlas sería un conflicto de carga de clases, y es
+justo lo que comprueba `R-J04`.
+
+- `com.appian:appian-plug-in-sdk` — Appian Corporation
+- `log4j:log4j` — Apache License 2.0
+- `javax.servlet:javax.servlet-api` — CDDL 1.1 / GPL 2.0 with Classpath Exception

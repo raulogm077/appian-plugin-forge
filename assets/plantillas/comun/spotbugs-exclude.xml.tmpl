@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Exclusiones de SpotBugs + FindSecBugs, acotadas a una clase y a un patron.
+
+  Mismo mecanismo que usa el plug-in de referencia (`config/spotbugs/exclude.xml`),
+  publicado en el AppMarket y aprobado por la revision real de Appian con esta
+  misma cadena. Lo que NO se toca, ni ahi ni aqui: `ignoreFailures = false` y
+  `reportLevel = LOW`. Relajar el umbral seria un verde vacuo con cara de
+  fichero de configuracion; excluir un patron concreto, con el motivo escrito
+  al lado, es una afirmacion que alguien puede leer y discutir.
+
+  Regla para anadir aqui: cada exclusion nombra la clase, nombra el patron, y
+  lleva su porque escrito al lado. Una exclusion global no se acepta.
+-->
+<FindBugsFilter>
+{{EXCLUSIONES_SPOTBUGS}}
+</FindBugsFilter>

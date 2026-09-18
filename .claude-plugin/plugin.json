@@ -1,0 +1,9 @@
+{
+  "name": "appian-plugin-forge",
+  "description": "Genera plugins de Appian (Function de lectura o writer, Smart Service y Servlet) desde una entrevista, y los verifica en cuatro capas hasta el limite de lo posible en local.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Raul Gomez Moya"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,49 @@
+package {{PAQUETE}}.servlet;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import com.appiancorp.services.ServiceContext;
+import com.appiancorp.services.WebServiceContextFactory;
+import com.appiancorp.suiteapi.servlet.AppianServlet;
+
+/**
+ * {{NOMBRE}}.
+ *
+ * <p>init() no se ejecuta al desplegar, sino en el primer acceso (auditoria
+ * §3.5): no colocar ahi nada de lo que dependa el arranque.
+ */
+public class {{CLASE}} extends AppianServlet {
+
+    // AppianServlet hereda de HttpServlet, que es Serializable: sin esto
+    // SpotBugs marca SnVI y `./gradlew build` no llega a BUILD SUCCESSFUL.
+    private static final long serialVersionUID = 1L;
+
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+
+        ServiceContext context = WebServiceContextFactory.getServiceContext(request);
+
+        try (PrintWriter out = response.getWriter()) {
+            String valor = request.getParameter("{{PARAMETRO}}");
+            if (valor == null || valor.isEmpty()) {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                out.write("{\"success\":false,\"error\":\"Falta el parametro {{PARAMETRO}}\"}");
+                return;
+            }
+            ejecutar(context, valor);
+            response.setStatus(HttpServletResponse.SC_OK);
+            out.write("{\"success\":true}");
+        }
+    }
+
+    private void ejecutar(ServiceContext context, String valor) {
+        throw new UnsupportedOperationException("Pendiente: delegar en el dominio");
+    }
+}

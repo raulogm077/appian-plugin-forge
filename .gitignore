@@ -1,0 +1,62 @@
+# Las reglas de artefactos, otra vez aqui y no solo en la raiz del repo padre.
+#
+# Este directorio VIAJA SOLO: `/plugin install` copia la carpeta del plugin a la
+# cache tal cual, y un checkout aislado de `appian-plugin-forge/` se queda sin el
+# `.gitignore` del repo padre. Sin este fichero, `build/`, `.pytest_cache/` y los
+# `__pycache__/` que hoy estan correctamente ignorados dejan de estarlo en cuanto
+# el directorio deja de ser una subcarpeta de este repositorio (aviso del
+# plugin-validator, ciclo 10).
+#
+# Las reglas SE DERIVAN de las del repo padre, no se inventan aqui:
+# `tests/test_lo_que_viaja.py::test_el_gitignore_del_plugin_replica_las_reglas_del_repo_padre`
+# rebasa cada linea de `../.gitignore` y compara la secuencia entera contra este
+# fichero. Anadir una regla arriba y no aqui pone ese test en rojo. Dos matices
+# de la derivacion:
+#
+# - Las reglas SIN barra interna (`build/`, `*.pyc`, `~$*`) casan a cualquier
+#   profundidad, asi que valen igual aqui: van literales.
+# - Las reglas CON barra estan ancladas al directorio de su `.gitignore`. Las de
+#   dentro del plugin se rebasan quitando el prefijo `appian-plugin-forge/`; la
+#   excepcion `!gradle/wrapper/gradle-wrapper.jar` del padre se queda fuera a
+#   proposito porque esta anclada a la raiz de aquel y aqui no casaria nada.
+#
+# LAS DOS EXCEPCIONES DE ABAJO NO SON DECORADO. Un `.gitignore` mas profundo gana
+# a uno mas alto para el mismo fichero: si este fichero trajera `*.jar` y `*.log`
+# sin sus dos `!`, el wrapper de Gradle y los dos logs de build REALES que usan
+# los tests de `salida_build` pasarian a estar ignorados pese a la excepcion del
+# padre, y son ficheros versionados a proposito como evidencia.
+
+# Salidas de build de plugins generados
+build/
+.gradle/
+*.jar
+# La plantilla del wrapper que el forge copia en cada plugin generado.
+!assets/plantillas/comun/gradle/wrapper/gradle-wrapper.jar
+bin/
+out/
+
+# Grafo de graphify
+graphify-out/
+
+# Editores y sistema operativo
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+Desktop.ini
+~$*
+
+# Temporales
+*.tmp
+*.bak
+*.log
+# Los logs de `./gradlew build` de `tests/fixtures/logs-de-build/` son EVIDENCIA
+# REAL versionada: salen de construir de verdad los proyectos que este
+# repositorio andamia, y son lo que impide que el parser se escriba contra un log
+# imaginado.
+!tests/fixtures/logs-de-build/*.log
+
+# Artefactos de Python (scripts y tests)
+__pycache__/
+*.pyc
+.pytest_cache/

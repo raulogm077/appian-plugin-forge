@@ -1,0 +1,28 @@
+{
+  "skills_competidoras": {
+    "appian-sail-generator": "Genera expresiones SAIL de interfaz de Appian a partir de requisitos en lenguaje natural. Use when el usuario quiere construir una interfaz, formulario, dashboard o pantalla.",
+    "appian-reverse-engineering": "Documenta una aplicacion Appian existente a partir de su carpeta exportada. Use when el usuario apunta a un export de Appian o pide entender una app heredada.",
+    "appian": "Crea y modifica objetos de diseno dentro de un entorno de Appian ya existente por MCP: record types, interfaces, reglas de expresion, modelos de proceso, sites, integraciones y sistemas conectados. Use when el usuario quiere configurar o conectar algo dentro de su entorno de Appian sin escribir codigo Java."
+  },
+  "casos": [
+    {"prompt": "quiero un paso propio para mi modelo de proceso que mueva documentos", "esperada": "crear-plugin-appian"},
+    {"prompt": "necesito una funcion que pueda llamar desde una regla de expresion", "esperada": "crear-plugin-appian"},
+    {"prompt": "como hago un endpoint http dentro de appian para que me llame un sistema externo", "esperada": "crear-plugin-appian"},
+    {"prompt": "tengo que empaquetar un jar para subirlo al appmarket", "esperada": "crear-plugin-appian"},
+    {"prompt": "quiero guardar datos en una tabla cuando el usuario pulse un boton de la pantalla", "esperada": "crear-plugin-appian"},
+    {"prompt": "hazme un formulario de alta con validaciones", "esperada": "appian-sail-generator"},
+    {"prompt": "documentame esta aplicacion que me han pasado exportada", "esperada": "appian-reverse-engineering"},
+    {"prompt": "quiero un componente de interfaz hecho con React para mis pantallas de Appian",
+     "esperada": "appian-sail-generator",
+     "porque": "Component es la primera frontera que declaran la description y ## When to Use: cadena de herramientas propia (npm/sail-tools/React, descriptor appian-component-plugin.xml) y fuera de la Fase 1. Lo que el caso guarda es que NO se la lleve esta skill; la esperada es la skill de interfaces, que es la mas cercana de las que existen de verdad --su descripcion real cubre 'any SAIL component'--."},
+    {"prompt": "necesito conectar appian con el erp por rest y sus credenciales",
+     "esperada": "appian",
+     "porque": "Connected System es la segunda frontera declarada: se resuelve con el Integration SDK, no con este plugin, y en el caso normal ni siquiera con un plug-in --se configura como objeto de diseno--. La entrada `appian` de skills_competidoras parafrasea la COBERTURA de la skill oficial de Appian (scope user), cuyo frontmatter enumera objetos de diseno sin nombrar integraciones aunque su superficie MCP las crea (`createConnectedSystem`, `createIntegration`)."}
+  ],
+  "fronteras_que_el_ranking_no_decide": {
+    "nota": "La tercera frontera declarada --modificar, auditar o migrar un plugin que ya existe (modo EDITAR, Fase 2)-- NO se puede escribir como caso de `casos`, y conviene que conste para que no se lea como olvido. `ejecutar_casos` exige una skill GANADORA, y ninguna de las que existen de verdad cubre editar un plug-in ya hecho. Medido sobre el campo de competidoras de este fichero: en «tengo este jar y quiero cambiarle un input» las cuatro descripciones puntuan 0.0, asi que gana la primera por orden alfabetico con margen 0.0 -- un caso no discriminante, que es justo lo que MARGEN_MINIMO existe para rechazar. Y cualquier parafraseo fiel («tengo un plugin ya desplegado y quiero cambiarle un input») lo gana esta skill por el token `plugin`, que solo ella tiene. Inventar una competidora que lo ganase seria un verde vacuo: no probaria nada del disparo de hoy. Lo comprobable es lo de abajo -- que la frase de exclusion de la description no ATRAIGA estos prompts, que es el efecto contraintuitivo de nombrar lo excluido en un ranking lexico. Lo sujeta `test_la_frontera_sin_competidora_NO_se_la_lleva_la_skill`.",
+    "prompts": [
+      "tengo este jar y quiero cambiarle un input"
+    ]
+  }
+}

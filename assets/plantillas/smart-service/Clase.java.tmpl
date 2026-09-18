@@ -1,0 +1,84 @@
+package {{PAQUETE}}.smartservice;
+
+import com.appiancorp.suiteapi.process.framework.AppianSmartService;
+import com.appiancorp.suiteapi.process.framework.Input;
+import com.appiancorp.suiteapi.process.framework.MessageContainer;
+import com.appiancorp.suiteapi.process.framework.Order;
+import com.appiancorp.suiteapi.process.framework.Required;
+import com.appiancorp.suiteapi.process.framework.SmartServiceContext;
+import com.appiancorp.suiteapi.process.exceptions.SmartServiceException;
+import com.appiancorp.suiteapi.process.palette.{{ANOTACION_PALETA}};
+import org.apache.log4j.Logger;
+
+/**
+ * {{NOMBRE}}.
+ *
+ * <p>La logica de negocio vive en el dominio ({{PAQUETE}}.service), que no
+ * conoce el SDK de Appian: esta clase solo traduce entre el framework y el
+ * dominio (D19). Esa separacion es lo que permite probar la logica sin cargar
+ * el SDK.
+ */
+@{{ANOTACION_PALETA}}
+@Order({ {{ORDEN_ENTRADAS}} })
+public class {{CLASE}} extends AppianSmartService {
+
+    private static final Logger LOG = Logger.getLogger({{CLASE}}.class);
+
+    private final SmartServiceContext smartServiceCtx;
+
+{{CAMPOS_ENTRADA}}
+
+{{CAMPOS_SALIDA}}
+    private Boolean errorOccurred;
+    private String errorMessage;
+
+    public {{CLASE}}(SmartServiceContext smartServiceCtx) {
+        super();
+        this.smartServiceCtx = smartServiceCtx;
+    }
+
+    @Override
+    public void run() throws SmartServiceException {
+        try {
+            ejecutar();
+            errorOccurred = Boolean.FALSE;
+        } catch (RuntimeException e) {
+            // El detalle va al log; al usuario, un mensaje sin datos sensibles.
+            // El identificador de correlacion es lo unico que sale al
+            // proceso: e.getMessage() puede llevar rutas, SQL o datos del
+            // usuario, y errorMessage es una SALIDA PUBLICA que ve cualquiera
+            // con acceso al proceso (spec 5.6). El detalle va al log.
+            String idCorrelacion = java.util.UUID.randomUUID().toString();
+            LOG.error("Error en {{CLASE}} [" + idCorrelacion + "]", e);
+            errorOccurred = Boolean.TRUE;
+            errorMessage = "Se produjo un error. Identificador de correlacion: " + idCorrelacion;
+            throw new SmartServiceException.Builder(getClass(), e).build();
+        }
+    }
+
+    private void ejecutar() {
+        // TODO: logica real del contrato. Las lineas de abajo mantienen el
+        // contrato de campos honesto ante SpotBugs hasta que la logica
+        // exista: leen cada entrada y escriben cada salida, y el metodo
+        // falla RUIDOSO si alguien despliega el andamiaje sin implementar.
+{{CUERPO_EJECUTAR}}
+        throw new UnsupportedOperationException("ejecutar() sin implementar: ver docs/contrato.md");
+    }
+
+    @Override
+    public void validate(MessageContainer messages) {
+        // Opcional: validate() y onSave() NO son obligatorios (auditoria §2.2).
+    }
+
+{{SETTERS}}
+
+{{GETTERS}}
+
+    public Boolean getErrorOccurred() {
+        return errorOccurred;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+}

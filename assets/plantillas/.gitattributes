@@ -1,0 +1,9 @@
+# Sin esto, el core.autocrlf=true de Windows convertiria estos ficheros a
+# CRLF en el proximo checkout y rompería gradlew (script de shell, exige LF)
+# en cualquier consumidor Unix de un plugin generado. Mismo patron que ya usa
+# el proyecto de referencia (Plugin Read EML) para su propio wrapper.
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar -text
+*.properties text eol=lf
+*.tmpl text eol=lf

@@ -1,0 +1,22 @@
+package {{PAQUETE}}.function;
+
+import com.appiancorp.suiteapi.expression.annotations.Category;
+import com.appiancorp.suiteapi.expression.annotations.Function;
+import com.appiancorp.suiteapi.expression.annotations.Parameter;
+
+/**
+ * {{NOMBRE}}.
+ *
+ * <p>Sin estado: la plataforma no garantiza CUANTAS veces evalua una
+ * expresion ni en que orden, y puede evaluar partes en paralelo (auditoria
+ * §7.6). Por eso esta clase no tiene campos mutables, ni de instancia ni
+ * static, y la logica es idempotente de verdad.
+ */
+@Category("{{CATEGORIA}}")
+public class {{CLASE}} {
+
+    {{ANOTACION_FUNCTION}}
+    public {{TIPO_RETORNO}} {{FUNCION}}({{PARAMETROS}}) {
+        throw new UnsupportedOperationException("Pendiente: delegar en el dominio");
+    }
+}

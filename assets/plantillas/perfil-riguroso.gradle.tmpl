@@ -1,0 +1,87 @@
+// ---8<--- PLUGINS_PERFIL
+    id 'info.solidsoft.pitest' version '1.19.0'
+// --->8---
+
+// ─── Perfil RIGUROSO (spec §2.3) ───────────────────────────────────────────
+// Se anade solo cuando el contrato declara que el plug-in parsea formatos
+// ajenos, sale a la red, toca credenciales o maneja datos personales: casos en
+// los que el espacio de entradas no lo controlamos nosotros.
+
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+jacocoTestCoverageVerification {
+    dependsOn jacocoTestReport
+    executionData(tasks.withType(Test))
+    violationRules {
+        rule {
+            limit {
+                counter = 'LINE'
+                value = 'COVEREDRATIO'
+                minimum = 0.95
+            }
+            limit {
+                counter = 'BRANCH'
+                value = 'COVEREDRATIO'
+                minimum = 0.85
+            }
+        }
+    }
+}
+
+pitest {
+    junit5PluginVersion = '1.2.3'
+    targetClasses = ['{{PAQUETE_RAIZ}}.*']
+    targetTests = ['{{PAQUETE_RAIZ}}.*Test']
+    // Los dos sufijos de property test (`*FuzzTest`, `*PropertyTest`) mas los
+    // de rendimiento. Un property test genera sus propias entradas: mutarlo
+    // mide el generador, no el codigo. `*PropertyTest` faltaba aqui mientras
+    // la puerta del orquestador SI lo contaba, asi que quien siguiera el
+    // convenio publicado metia sus tests aleatorios dentro de la mutacion.
+    excludedTestClasses = ['**.*FuzzTest', '**.*PropertyTest', '**.*PerformanceTest']
+    // Un numero acotado de workers evita sobresuscribir la maquina y ha
+    // resultado bastante mas estable en Windows.
+    threads = providers.gradleProperty('pitThreads').getOrElse('4').toInteger()
+    outputFormats = ['HTML', 'XML']
+    timestampedReports = false
+    mutationThreshold = 85
+    coverageThreshold = 90
+    failWhenNoMutations = true
+    timeoutConstInMillis = 5000
+    jvmArgs = ['-Xmx1g']
+}
+
+tasks.register('mutationTest') {
+    group = 'verification'
+    description = 'Ejecuta PIT con la puerta del 85 %.'
+    dependsOn tasks.named('pitest')
+}
+
+tasks.register('verificarRevisionGit') {
+    group = 'verification'
+    description = 'Exige un worktree limpio para emitir evidencia de release.'
+    doLast {
+        def revision = new ByteArrayOutputStream()
+        exec {
+            commandLine 'git', 'rev-parse', '--verify', 'HEAD'
+            standardOutput = revision
+        }
+        def estado = new ByteArrayOutputStream()
+        exec {
+            commandLine 'git', 'status', '--porcelain'
+            standardOutput = estado
+        }
+        assert estado.toString('UTF-8').trim().isEmpty():
+                'La cualificacion exige un worktree de git limpio.'
+        file('build/reports').mkdirs()
+        file('build/reports/git-revision.txt')
+                .setText(revision.toString('UTF-8').trim() + System.lineSeparator(), 'UTF-8')
+    }
+}
+
+tasks.register('releaseCheck') {
+    group = 'verification'
+    description = 'Todas las puertas deterministas sobre una revision limpia.'
+    dependsOn check, mutationTest, jacocoTestCoverageVerification, verificarRevisionGit
+}

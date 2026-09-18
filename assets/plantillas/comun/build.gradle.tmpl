@@ -1,0 +1,130 @@
+import com.github.spotbugs.snom.Confidence
+import com.github.spotbugs.snom.Effort
+import org.cyclonedx.Version
+
+plugins {
+    id 'java'
+    id 'jacoco'
+    id 'com.github.spotbugs' version '6.5.9'
+    id 'org.cyclonedx.bom' version '3.3.0'
+{{PLUGINS_PERFIL}}
+}
+
+group = '{{GRUPO}}'
+version = '{{VERSION}}'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // El SDK y log4j los provee el contenedor en runtime: compileOnly, y el
+    // validador de empaquetado comprueba que NO acaban en META-INF/lib.
+    compileOnly 'com.appian:appian-plug-in-sdk:26.3'
+    compileOnly 'log4j:log4j:1.2.17'
+    compileOnly 'javax.servlet:javax.servlet-api:4.0.1'
+
+{{DEPENDENCIAS_IMPLEMENTATION}}
+
+    testImplementation platform('org.junit:junit-bom:5.13.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.mockito:mockito-core:5.20.0'
+    // Solo para cargar y probar las clases del adaptador Appian.
+    testImplementation 'com.appian:appian-plug-in-sdk:26.3'
+    testImplementation 'log4j:log4j:1.2.17'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    spotbugsPlugins 'com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 17
+    // El SDK publicado en Maven omite anotaciones internas que solo usa su
+    // propio bytecode; se silencian esos avisos de classfile externo.
+    options.compilerArgs += ['-Xlint:all', '-Xlint:-serial', '-Xlint:-classfile']
+}
+
+test {
+    useJUnitPlatform()
+}
+
+jacoco {
+    toolVersion = '0.8.13'
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+spotbugs {
+    ignoreFailures = false
+    showStackTraces = true
+    effort = Effort.valueOf('MAX')
+    reportLevel = Confidence.valueOf('LOW')
+    maxHeapSize = '1g'
+    // Exclusiones acotadas a una clase y un patron, cada una con su porque
+    // escrito dentro. El umbral NO se relaja: se justifica lo concreto.
+    excludeFilter = file('config/spotbugs/exclude.xml')
+}
+
+spotbugsTest {
+    enabled = false
+}
+
+cyclonedxDirectBom {
+    includeConfigs = ['runtimeClasspath']
+    projectType = 'library'
+    schemaVersion = Version.VERSION_16
+    jsonOutput.set(file('build/reports/sbom/{{NOMBRE_ARTEFACTO}}-sbom.json'))
+    includeLicenseText = true
+}
+
+jar {
+    archiveBaseName = '{{NOMBRE_ARTEFACTO}}'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+
+    // La aprobacion de Appian Cloud exige la fuente dentro del ejecutable.
+    into('src') {
+        from sourceSets.main.allJava
+    }
+
+    // El classloader de plug-ins de Appian carga las dependencias de aqui.
+    into('META-INF/lib') {
+        from configurations.runtimeClasspath
+    }
+
+    into('META-INF') {
+        from('LICENSE')
+        from('THIRD_PARTY_NOTICES.md')
+    }
+
+    manifest {
+        attributes('Spring-Context': '*;publish-context:=false')
+    }
+}
+
+check.dependsOn spotbugsMain
+
+// El SBOM se cablea EXPLICITAMENTE. Hoy `gradlew build` ya lo genera, pero por
+// un default del plugin `org.cyclonedx.bom` 3.3.0, no porque este fichero lo
+// pida: comprobado con `gradlew build --dry-run`, que incluye la tarea, frente
+// a `compileJava --dry-run`, que no. La capa 1 de licencias LEE ese SBOM y sale
+// ROJA si falta, asi que el dia que una version del plugin dejara de
+// auto-engancharse, el camino documentado --que es solo `gradlew build`--
+// empezaria a certificar NOT_READY sin que nada explicara por que.
+// Es idempotente: si ya estaba en el grafo, no cambia nada.
+check.dependsOn cyclonedxDirectBom
+{{BLOQUE_PERFIL}}

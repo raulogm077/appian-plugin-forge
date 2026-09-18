@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<appian-plugin name="{{NOMBRE}}" key="{{KEY}}">
+  <plugin-info>
+    <description>{{DESCRIPCION}}</description>
+    <vendor name="{{VENDOR}}" url="{{VENDOR_URL}}"/>
+    <version>{{VERSION}}</version>
+    <application-version min="{{APPLICATION_VERSION_MIN}}"/>
+  </plugin-info>
+
+  <servlet name="{{NOMBRE}}" key="{{NOMBRE_ARTEFACTO}}" class="{{PAQUETE}}.servlet.{{CLASE}}">
+    <url-pattern>{{URL_PATTERN}}</url-pattern>
+    <!-- Para parametrizar el servlet, el mecanismo real y documentado es
+         <init-param>, NUNCA <constructor-arg>, que no existe en el esquema
+         (auditoria 3.3). Se deja de ejemplo, comentado, porque exigirlo
+         obligaria al contrato a declarar un par nombre/valor que la mayoria de
+         los servlets no necesita:
+    <init-param>
+      <param-name>tiempoEsperaMs</param-name>
+      <param-value>5000</param-value>
+    </init-param>
+    -->
+  </servlet>
+</appian-plugin>

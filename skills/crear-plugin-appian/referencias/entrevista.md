@@ -1,0 +1,180 @@
+# Formato de la entrevista
+
+Fuente: spec `docs/superpowers/specs/2026-08-08-appian-plugin-forge-design.md` §6.1, §6.2 y
+§6.4 (repo de desarrollo; no viaja con el plugin).
+
+## Una pregunta por turno, sin opción múltiple
+
+Quien pide un plugin normalmente no sabe aún lo que quiere, y ofrecerle opciones le hace
+elegir en vez de pensar: ensancha la búsqueda en lugar de estrecharla.
+
+Cada turno enseña la hipótesis del modelo, para que se pueda corregir de un plumazo en vez de
+contestar desde cero:
+
+```
+Q: <una pregunta enfocada>
+GUESS: <hipótesis de la respuesta, con el razonamiento que la produjo>
+CONFIDENCE: ~30%
+```
+
+El tipo de plugin no se pregunta así — se deduce; ver
+`${CLAUDE_PLUGIN_ROOT}/skills/crear-plugin-appian/referencias/tipos-de-plugin.md`.
+
+## Condición de parada: doble puerta
+
+Son dos cosas distintas y ninguna basta sola.
+
+- **Puerta determinista** — que no falte ningún campo obligatorio del tipo. Que falte el
+  `Required` de un input de Smart Service no es opinable: sin ese dato no compila. Lo
+  comprueba un script:
+  `python "${CLAUDE_PLUGIN_ROOT}/scripts/contrato.py" docs/contrato.md`.
+  En PowerShell, `$env:CLAUDE_PLUGIN_ROOT` — `${…}` es sintaxis de variable de sesión y se
+  expande a cadena vacía sin avisar; el porqué, en `SKILL.md` § *ENTREVISTA*.
+- **Puerta de confianza** — *«¿puedo predecir tu reacción a las tres siguientes preguntas
+  que haría?»*. Si no, seguir. Con **suelo antibucle**: si tras varias rondas la confianza
+  no sube, parar y preguntar qué falta en vez de seguir indagando indefinidamente.
+
+**Se exige un «sí» explícito antes de generar nada.** Ni la puerta determinista sola —el
+contrato puede estar completo en sus campos y aun así no reflejar lo que el usuario quiere—
+ni la puerta de confianza sola —la intención puede estar clara mientras falta un campo sin el
+que el andamiaje no puede generarse— bastan por separado.
+
+## Qué se decide y qué se pregunta
+
+El esquema completo vive en `${CLAUDE_PLUGIN_ROOT}/scripts/contrato.py` y no se duplica aquí.
+Lo que sí hace falta aquí es **el reparto**, porque sin él el gradiente natural ante una puerta
+en rojo es preguntar, y un contrato mínimo real tiene **entre 17 y 23 asignaciones** —según el
+tipo: 17 el servlet, 18 la writer-function, 21 la function, 23 el smart service— frente a las
+siete preguntas de más abajo. Convertir esas veintitantas asignaciones en otros tantos turnos
+sería lo contrario de lo que este sistema busca.
+
+La regla es una sola: **se pregunta lo que el usuario sabe y no se puede deducir; se decide y
+se enseña todo lo demás.**
+
+| Campo | Quién lo pone | Cómo |
+|---|---|---|
+| `plugin.tipo` | **Deducido** | De lo que el usuario describe (`tipos-de-plugin.md`). Se propone con su porqué, nunca se pregunta |
+| `plugin.perfil` | **Deducido** | De las cuatro preguntas marcadas abajo. Se propone; lo confirma el usuario |
+| `plugin.nombre` | **Decidido** | Del propósito que el usuario ya describió |
+| `plugin.key`, `plugin.paquete` | **Decidido** | Convención `com.<organización>.appian.<algo>`. Se enseñan una vez, juntos, para confirmar de un vistazo |
+| `plugin.version` | **Decidido** | `1.0.0` si se estrena. Solo se pregunta si hay versión anterior (séptima pregunta) |
+| `plugin.application_version_min` | **Decidido** | La mínima que soporte lo que el plug-in usa. Si el contrato pide `useKeywords`, mínimo `26.1` (`R-F05`) |
+| `clase.nombre` | **Decidido** | Del nombre del plug-in, en PascalCase |
+| `clase.paleta` | **Decidido** | De lo que hace el paso. Es la **subpaleta** — ver la lista debajo de esta tabla |
+| `bundle.nombre` | **Decidido** | Igual que la clave del módulo — ver abajo, es el único que además **bloquea la puerta** |
+| `entradas`/`salidas`: **nombre y para qué** | **PREGUNTADO** | Es el contrato funcional: nadie más lo sabe |
+| `entradas`/`salidas`: `tipo_java` | **Decidido** | Del sentido del dato. Ojo con los no inferibles (`R-F04`) y con `Timestamp`/`Time` |
+| `entradas[].required` | **Decidido, confirmado** | Se propone `ALWAYS` salvo que el usuario haya dicho que el dato puede faltar. Un primitivo no admite `OPTIONAL` (`R-F02`) |
+| `descripcion` de cada uno | **Decidido** | Se redacta y se enseña: acaba en el `.properties` que ve el diseñador |
+| Las seis de admisión y la séptima | **PREGUNTADO** | Son la tabla de abajo |
+
+### Las subpaletas que existen (`clase.paleta`)
+
+La lista cerrada vive en `contrato.ANOTACION_POR_PALETA` y sale de `javap` sobre el JAR del
+SDK 26.3, no de ningún resumen. **La puerta determinista rechaza cualquier otra**, y el mensaje
+de rechazo dice en cuál de los dos niveles está el error.
+
+| Categoría (`paletteCategory`) | Subpaletas — esto es lo que va en el contrato |
+|---|---|
+| Automation Smart Services | `Analytics`, `Business Rules`, `Communication`, `Data Services`, `Document Generation`, `Document Management`, `Identity Management`, `Integration & APIs`, `Process Management`, `Robotic Processes`, `Social`, `Test Management` |
+| Workflow | `Activities`, `Events`, `Gateways`, `Human Tasks` |
+| Deprecated Services | `Forum Management` — válida, pero **no se propone** en un plug-in nuevo |
+
+**Los dos niveles no son lo mismo, y confundirlos escribe en el contrato un valor que la puerta
+rechaza.** `R-F01` rige sobre
+la **categoría**, que el contrato no escribe: la hornea la anotación de conveniencia que emite la
+plantilla. Lo que se escribe en `clase.paleta` es la **subpaleta**. `Workflow` es una categoría,
+así que no vale como valor; si el paso es una actividad de flujo, la subpaleta se llama
+`Activities`.
+
+**Enseñar no es preguntar.** Los campos decididos se muestran en bloque —«esto es lo que voy a
+generar»— y se corrigen de un plumazo, que es justo lo que el formato `GUESS`/`CONFIDENCE`
+persigue. Lo que no se hace es convertir cada identificador en un turno.
+
+**Y un campo decidido mal puesto ya no llega lejos:** la puerta determinista comprueba que
+`paquete`, `key`, `clase.nombre` y `bundle.nombre` sean identificadores Java válidos, así que
+un espacio o una palabra reservada se rechazan en el acto y no dentro de `./gradlew build`.
+
+El que más cara cuesta olvidar, porque no es una decisión de diseño sino un identificador:
+
+**`[bundle] nombre`** — la clave del módulo. Alimenta dos cosas a la vez: el atributo `key` de
+`<smart-service>`/`<function>` en el manifiesto y el nombre base del `.properties`. El plug-in
+publicado en el AppMarket declara `key="readEmailFile"` y su bundle es
+`readEmailFile_en_US.properties`: mismo nombre, y por eso es un solo campo. Se pide a los tres
+tipos que cargan bundle —`function`, `writer-function`, `smart-service`—; el `servlet` no lo
+lleva, su clave de módulo sale del nombre del artefacto.
+
+Sin él salía `key=""` y un fichero llamado `_en_US.properties`, y ninguna de las cuatro capas
+lo veía: el validador de bundles derivaba la ruta esperada del **mismo dato vacío** que había
+producido el artefacto roto, así que los dos lados coincidían en la nada.
+
+### Qué llevan de más los contratos canónicos
+
+Los fixtures `-minimo` de `${CLAUDE_PLUGIN_ROOT}/tests/fixtures/contratos/` son la **forma
+mínima real** que la puerta acepta, no el camino feliz, y conviene saber qué traen **sin que la
+puerta lo exija**, para no confundirlo con lo obligatorio:
+
+- `plugin.descripcion`, en los cuatro. Sano tener, y es prosa que se decide y se enseña.
+- `salidas`, en el smart-service. Ahí son campos con accesor, así que un contrato sin ellas es
+  legítimo — a diferencia de una `function`, donde de la salida sale el tipo de retorno.
+
+## Las preguntas que deciden admisión y perfil
+
+Preguntas baratas en la entrevista y carísimas de descubrir tarde. Son **siete**: seis viven
+en la tabla de abajo, y una séptima va aparte porque no decide admisión — decide otra cosa
+igual de cara. Cuatro de las seis deciden además el **perfil de rigor** —van marcadas—, así
+que el perfil no se pregunta por separado: se deduce y se propone.
+
+| Pregunta | Si la respuesta es sí | Perfil |
+|---|---|---|
+| ¿Parsea formatos que no controlamos? | el espacio de entradas es ajeno | **RIGUROSO** |
+| ¿Sale a la red? | timeouts, topes y política de reintentos | **RIGUROSO** |
+| ¿Toca credenciales? | Secure Credentials Store, obligatorio | **RIGUROSO** |
+| ¿Maneja datos personales? | nada de datos en logs; correlación por identificador | **RIGUROSO** |
+| ¿Usa librerías de terceros? | mirar licencia; copyleft es rechazo automático | — |
+| ¿Toca ficheros? | `ContentService`; prohibido el sistema de ficheros | — |
+
+**Las cuatro marcadas se escriben en el contrato**, y no como prosa: son el bloque
+`[capacidades]`, con una clave booleana por cada pregunta marcada, aquí en el orden de la
+tabla: `parsea_formatos_ajenos`, `sale_a_la_red`, `toca_credenciales` y `datos_personales`. Las
+**cuatro van siempre, aunque valgan `false`**: la puerta determinista las exige presentes, y de
+sus valores salen las dos cosas que dependen de esta tabla — el perfil propuesto
+(`contrato.perfil_propuesto`) y el AVISO de escalada que se imprime cuando el contrato declara
+ESTÁNDAR y alguna capacidad pide RIGUROSO. Un bloque incompleto no se lee como «todo `false`»:
+no pasa la puerta.
+
+**Por qué «toca ficheros» no dispara el perfil por sí solo.** Mover o crear un documento no
+expone la lógica a nada que no controlemos; interpretar su contenido, sí — y eso ya lo recoge
+la primera pregunta. Mantenerlas separadas evita que casi cualquier plug-in acabe siendo
+RIGUROSO por tecnicismo, que es como un perfil deja de significar nada.
+
+**La séptima, que no decide admisión pero evita el peor accidente posible:**
+
+**¿Es una versión nueva de un plug-in que ya está desplegado?** Si lo es, y cambian inputs u
+outputs, hace falta **clave nueva**, clase o paquete distintos, y deprecar el anterior:
+sobrescribir la clave puede **romper procesos vivos en producción** (auditoría §7.4). Es la
+única regla del proyecto cuya consecuencia cae sobre producción y no sobre el despliegue, y
+solo es comprobable porque el dossier de una versión anterior guarda la firma pública
+congelada contra la que comparar.
+
+**Si la respuesta es sí, la entrevista no ha terminado hasta que el contrato lleve el bloque.**
+`R-F08` compara contra `[version_anterior]`, y **un bloque ausente se lee como «no hay
+cambio»**: la regla no salta, y **lo hace en silencio** — ni error, ni aviso, ni una línea
+informativa. Por eso esta pregunta es la única guarda que hay, y está en la regla cuya
+factura la paga producción. El bloque no se escribe a mano — el
+`DOSSIER.md` de la versión anterior lo trae ya formateado para pegar, en su sección 6:
+
+```
+[version_anterior]
+key = "com.raul.appian.ejemplo"
+version = "1.0.0"
+
+[version_anterior.firma]
+clase = "EjemploSmartService"
+entradas = ["documentoOrigen:Long"]
+salidas = ["documentoResultado:Long"]
+```
+
+La `key` va **hermana** de `firma`, no dentro: es lo que `R-F08` compara con `plugin.key`. La
+puerta determinista rechaza un `[version_anterior]` a medias, porque es peor que ninguno —
+parece que hay línea base y no la hay.

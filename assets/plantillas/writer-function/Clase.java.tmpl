@@ -1,0 +1,26 @@
+package {{PAQUETE}}.function;
+
+import com.appiancorp.suiteapi.expression.Writer;
+import com.appiancorp.suiteapi.expression.annotations.Category;
+import com.appiancorp.suiteapi.expression.annotations.Function;
+import com.appiancorp.suiteapi.expression.annotations.Parameter;
+
+/**
+ * {{NOMBRE}} — writer function.
+ *
+ * <p>Es la unica via sancionada para ESCRIBIR datos desde una interfaz: los
+ * smart services de plug-in no se pueden usar en expresiones (auditoria §7.5).
+ * La funcion devuelve un Writer, que se enlaza con bind() en el saveInto de un
+ * componente; el efecto ocurre al ejecutar, no al evaluar.
+ *
+ * <p>La propia funcion sigue siendo idempotente y sin estado: lo que escribe es
+ * el execute() del Writer que devuelve, no ella.
+ */
+@Category("{{CATEGORIA}}")
+public class {{CLASE}} {
+
+    {{ANOTACION_FUNCTION}}
+    public Writer {{FUNCION}}({{PARAMETROS}}) {
+        throw new UnsupportedOperationException("Pendiente: devolver el Writer del dominio");
+    }
+}
