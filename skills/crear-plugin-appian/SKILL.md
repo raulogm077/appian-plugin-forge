@@ -93,7 +93,10 @@ de más sin que la puerta lo exija, y por qué, en `referencias/entrevista.md`.
 
 **Criterio de salida:** las dos puertas de `referencias/entrevista.md` en verde —
 `python "${CLAUDE_PLUGIN_ROOT}/scripts/contrato.py" docs/contrato.md` sin ninguna línea
-`FALTA`, y un «sí» explícito del usuario a la puerta de confianza—. Ninguna basta sola.
+`FALTA`, y un «sí» explícito del usuario a la puerta de confianza—. Ninguna basta sola. El «sí»
+se escribe en el contrato como `[confirmacion]` / `usuario_confirmo = true`
+(`referencias/entrevista.md`) — sin ese bloque, la puerta determinista de arriba nunca cierra en
+verde, así que la propia herramienta hace imposible generar sobre un contrato que nadie confirmó.
 
 > **En PowerShell, esta línea y todas las `${CLAUDE_PLUGIN_ROOT}` de este documento se traducen a
 > `$env:CLAUDE_PLUGIN_ROOT`** — si no, la ruta se expande a cadena vacía sin avisar, y si la
@@ -311,6 +314,19 @@ tercero decidiendo (spec §9).
 contrato final aceptado en el paso 1 — no a una versión intermedia de una entrevista
 corregida a mitad de camino.
 
+**Documentación de usuario, aparte del dossier.**
+`python "${CLAUDE_PLUGIN_ROOT}/scripts/generar_documentacion_usuario.py" <raíz-del-proyecto-generado>`
+escribe `docs/GUIA_INTEGRACION.md` (para el desarrollador Appian que va a integrar el plugin: cómo
+invocarlo según el tipo, tabla de entradas/salidas, versión mínima requerida) y
+`docs/FICHA_APPMARKET.md` (texto de ficha para quien lo encuentra en el Marketplace). Los dos se
+derivan enteramente de `docs/contrato.md`, sin preguntar nada nuevo, y **no son piezas del
+dossier**: el dossier tiene audiencia interna —quien edite este mismo plugin en la Fase 2—; estos
+dos documentos son para quien lo va a usar. Se generan siempre, en la misma pasada que el dossier.
+
+**Criterio de salida, completo:** las seis piezas del dossier están presentes con la firma
+congelada correcta, **y** `docs/GUIA_INTEGRACION.md` y `docs/FICHA_APPMARKET.md` existen con
+contenido no vacío.
+
 ## Common Rationalizations
 
 | Racionalización | Realidad |
@@ -331,6 +347,8 @@ corregida a mitad de camino.
 - Se escribe lógica de negocio antes de que exista un solo caso JUnit.
 - Se escribe lógica sin plan de tareas, para una tarea que no figura en el plan, o con más de
   un slice abierto a la vez.
+- Se escribe `[confirmacion]` con `usuario_confirmo = true` antes de que el usuario haya dicho
+  que sí, o se deja el bloque de una confirmación anterior tras editar el contrato.
 - Se afirma que una clase o método de `com.appiancorp` existe sin haber ejecutado `javap`.
 - El `.properties` generado no lleva sufijo de locale.
 - Se declara un plug-in terminado sin certificado, o con una puerta marcada como pasada que

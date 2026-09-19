@@ -178,3 +178,23 @@ salidas = ["documentoResultado:Long"]
 La `key` va **hermana** de `firma`, no dentro: es lo que `R-F08` compara con `plugin.key`. La
 puerta determinista rechaza un `[version_anterior]` a medias, porque es peor que ninguno —
 parece que hay línea base y no la hay.
+
+## El bloque `[confirmacion]`
+
+Nuevo desde el 18-sep-2026 (spec `2026-09-18-confirmacion-entrevista-y-documentacion-usuario-design.md`,
+capacidad B). La puerta de confianza de arriba —el «sí» explícito— ahora tiene un mecanismo, no
+solo una convención: `contrato.validar()` exige
+
+```toml
+[confirmacion]
+usuario_confirmo = true
+```
+
+**Se escribe SOLO después de que el usuario haya dicho que sí a la puerta de confianza — nunca
+antes, y nunca como parte de la hipótesis `GUESS`.** Es el último campo que se añade al contrato,
+después de todos los demás.
+
+**Si el contrato se edita después de escribir este bloque** —una corrección, un campo que
+cambia—, hay que volver a pedir confirmación y reescribirlo. El campo es un booleano simple, no un
+hash del contenido (decisión E1 de la spec): no detecta por sí solo que el contrato cambió bajo
+él, así que la garantía depende de seguir esta regla, no solo de que el campo exista.
