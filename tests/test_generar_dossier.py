@@ -94,6 +94,28 @@ def test_el_dossier_distingue_una_revision_que_corrio_de_uNA_que_no():
     assert "no consta" not in con
 
 
+def test_el_dossier_toma_el_VEREDICTO_de_LA_ULTIMA_pasada_no_la_primera(tmp_path):
+    """`hallazgos-revision.md` con mas de una pasada -correccion + re-revision,
+    el camino que describe el paso 6 de SKILL.md- deja varias lineas
+    `VEREDICTO`. El dossier tiene que describir el estado ACTUAL del codigo,
+    no el de la primera pasada: un `next()` a secas sobre las lineas del
+    fichero se queda con la primera, que es justo la contraria."""
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "contrato.md").write_text(
+        (pathlib.Path(__file__).resolve().parent / "fixtures" / "contratos"
+         / "function-minimo.md").read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "docs" / "hallazgos-revision.md").write_text(
+        "## Pasada 1\n\nVEREDICTO: no cumple\nHALLAZGOS:\n- [media] algo\n\n"
+        "## Corrección\n\nSe corrigio.\n\n## Pasada 2\n\nVEREDICTO: cumple\nHALLAZGOS: ninguno\n",
+        encoding="utf-8",
+    )
+
+    assert gd.main_con_raiz(tmp_path) == 0
+    md = (tmp_path / "docs" / "DOSSIER.md").read_text(encoding="utf-8")
+    assert "VEREDICTO: cumple" in md
+    assert "VEREDICTO: no cumple" not in md
+
+
 def test_el_dossier_distingue_no_escaneado_de_escaneado_sin_resultados():
     # None: build/reports/inventario-api.json no existe todavia (nadie ha
     # compilado ni escaneado). {}: el escaneo SI se ejecuto y no encontro

@@ -463,14 +463,27 @@ def test_el_comando_de_captura_es_EL_MISMO_en_la_SKILL_y_en_el_script():
             f"con codigos de control y el lector no lo reconoce -> «{linea}»"
         )
 
+    # Son DOS las formas canonicas: la corriente y la de RIGUROSO, que anade
+    # `releaseCheck` porque tres de las cuatro puertas de ese perfil no forman
+    # parte de `build`. Las dos viven en `salida_build` y las dos las publica
+    # la skill; lo que no se admite es una tercera escrita a mano.
+    canonicas = {salida_build.COMANDO_DE_CAPTURA, salida_build.COMANDO_DE_CAPTURA_RIGUROSO}
     for nombre, linea in citadas:
         if "gradlew.bat" in linea:
             continue
-        assert linea == salida_build.COMANDO_DE_CAPTURA, (
+        assert linea in canonicas, (
             f"`{nombre}` publica «{linea}» y el script sugiere "
-            f"«{salida_build.COMANDO_DE_CAPTURA}»: la puerta manda una cosa y su propio "
-            f"error sugiere otra"
+            f"«{salida_build.COMANDO_DE_CAPTURA}» o «{salida_build.COMANDO_DE_CAPTURA_RIGUROSO}»: "
+            f"la puerta manda una cosa y su propio error sugiere otra"
         )
+    # Suelo antivacuidad de la ampliacion: si la skill dejara de publicar el
+    # comando de RIGUROSO, el bucle de arriba seguiria verde mirando solo la
+    # forma corriente, y volveriamos al bucle que esto vino a cerrar --tres
+    # puertas en rojo y ningun comando que copiar-.
+    assert any(l == salida_build.COMANDO_DE_CAPTURA_RIGUROSO for _, l in citadas), (
+        "la skill dejo de publicar el comando de captura de RIGUROSO: sin el, sus tres puertas "
+        "que no forman parte de `build` salen rojas para siempre y nadie sabe con que arreglarlo"
+    )
 
     # Las dos mitades del arreglo, con literales propios.
     assert re.match(r"mkdir -p build\s*&&\s*\./gradlew build", salida_build.COMANDO_DE_CAPTURA), (

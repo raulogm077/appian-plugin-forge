@@ -184,6 +184,7 @@ def test_main_sin_clases_compiladas_devuelve_1(tmp_path, monkeypatch, capsys):
     directorio_vacio.mkdir()
     monkeypatch.setattr(sys, "argv", [
         "verificar_framework.py", str(contrato_md), str(manifiesto_xml), str(directorio_vacio),
+        str(tmp_path),
     ])
 
     codigo_salida = vf.main()
@@ -279,3 +280,116 @@ def test_las_marcas_de_R_F13_son_las_que_las_plantillas_escriben_de_verdad():
                 f"una plantilla lanza UnsupportedOperationException con un texto que R-F13 "
                 f"no conoce: {linea.strip()}"
             )
+
+
+# --- R-F14 · que nadie apague la puerta para que el build pase --------------
+#
+# Los dos casos de abajo NO son hipoteticos: son lo que hicieron dos agentes
+# distintos, en dos tipos de plug-in distintos, en las pruebas E2E del
+# 19-sep-2026, cada uno por su cuenta y con el build en rojo delante.
+
+GRADLE_SANO = """
+spotbugs {
+    ignoreFailures = false
+    reportLevel = Confidence.valueOf('LOW')
+}
+"""
+
+EXCLUDE_ANDAMIADO = """<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <!-- ABIERTO, a proposito.
+  <Match>
+    <Class name="com.raul.appian.ejemplo.servlet.Ejemplo"/>
+    <Bug pattern="SERVLET_PARAMETER"/>
+  </Match>
+  -->
+</FindBugsFilter>
+"""
+
+EXCLUDE_CON_SECSP_ACTIVO = """<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <Match>
+    <Class name="com.raul.appian.ejemplo.servlet.Ejemplo"/>
+    <Bug pattern="SECSP"/>
+  </Match>
+</FindBugsFilter>
+"""
+
+
+def test_un_reportLevel_relajado_no_pasa():
+    gradle = GRADLE_SANO.replace("'LOW'", "'MEDIUM'")
+    hallazgos = vf.comprobar_guardarrailes("smart-service", gradle, "", "")
+    assert [h.regla for h in hallazgos] == ["R-F14"]
+    assert "MEDIUM" in hallazgos[0].mensaje
+
+
+def test_ignoreFailures_en_true_no_pasa():
+    gradle = GRADLE_SANO.replace("ignoreFailures = false", "ignoreFailures = true")
+    hallazgos = vf.comprobar_guardarrailes("smart-service", gradle, "", "")
+    assert [h.regla for h in hallazgos] == ["R-F14"]
+
+
+def test_un_build_gradle_sin_los_ajustes_tampoco_pasa():
+    """Borrarlos apaga la puerta igual que cambiarlos, y mas discretamente."""
+    hallazgos = vf.comprobar_guardarrailes("smart-service", "plugins { id 'java' }", "", "")
+    assert {h.regla for h in hallazgos} == {"R-F14"}
+    assert len(hallazgos) == 2  # uno por ajuste ausente
+
+
+def test_el_andamiaje_recien_generado_pasa_la_regla():
+    hallazgos = vf.comprobar_guardarrailes(
+        "servlet", GRADLE_SANO, EXCLUDE_ANDAMIADO, ""
+    )
+    assert hallazgos == []
+
+
+def test_activar_SECSP_sin_decidirlo_por_escrito_no_pasa():
+    hallazgos = vf.comprobar_guardarrailes(
+        "servlet", GRADLE_SANO, EXCLUDE_CON_SECSP_ACTIVO, "# Decisiones\n\nD1: usamos HMAC.\n"
+    )
+    assert [h.regla for h in hallazgos] == ["R-F14"]
+    assert "SECSP" in hallazgos[0].mensaje
+
+
+def test_activar_SECSP_habiendolo_decidido_por_escrito_si_pasa():
+    """La exclusion es legitima; lo que no lo es es hacerla en silencio."""
+    decisiones = (
+        "# Decisiones\n\nD2: se excluye SECSP tras implementar `ejecutar()`: el valor se "
+        "valida contra la firma HMAC y no llega a consulta, ruta ni comando.\n"
+    )
+    hallazgos = vf.comprobar_guardarrailes(
+        "servlet", GRADLE_SANO, EXCLUDE_CON_SECSP_ACTIVO, decisiones
+    )
+    assert hallazgos == []
+
+
+def test_la_regla_de_SECSP_solo_aplica_a_servlets():
+    hallazgos = vf.comprobar_guardarrailes(
+        "smart-service", GRADLE_SANO, EXCLUDE_CON_SECSP_ACTIVO, ""
+    )
+    assert hallazgos == []
+
+
+def test_un_exclude_xml_roto_se_dice_en_vez_de_tragarse():
+    hallazgos = vf.comprobar_guardarrailes("servlet", GRADLE_SANO, "<FindBugsFilter>", "")
+    assert [h.regla for h in hallazgos] == ["R-F14"]
+
+
+def test_R_F14_viaja_dentro_de_comprobar_y_no_solo_suelta():
+    """La costura: la regla puede existir y no estar enganchada a la puerta."""
+    hallazgos = verificar_framework.comprobar(
+        _contrato_minimo(), "", [clase(CLASE_R_F13, ["x"])],
+        gradle=GRADLE_SANO.replace("'LOW'", "'HIGH'"),
+    )
+    assert "R-F14" in {h.regla for h in hallazgos}
+
+
+def test_un_segundo_bloque_que_pisa_al_primero_tampoco_pasa():
+    """Dejar el bloque bueno y anadir otro debajo es como se relaja una
+    configuracion sin que el diff parezca que la relaja. Mirar solo la primera
+    aparicion lo daba por bueno.
+    """
+    gradle = GRADLE_SANO + "\nspotbugsMain {\n    ignoreFailures = true\n}\n"
+    hallazgos = vf.comprobar_guardarrailes("smart-service", gradle, "", "")
+    assert [h.regla for h in hallazgos] == ["R-F14"]
+    assert "true" in hallazgos[0].mensaje

@@ -63,11 +63,106 @@ class Hallazgo:
     mensaje: str
 
 
+# R-F14 · los dos ajustes que el andamiaje fija para que SpotBugs pueda decir
+# que no. No son preferencias de estilo: son el interruptor de la puerta.
+# `ignoreFailures = true` la apaga entera, y subir `reportLevel` la deja
+# encendida pero ciega, las dos SIN tocar una sola linea de codigo del plug-in
+# y con cara de configuracion legitima.
+AJUSTES_SPOTBUGS = (
+    ("ignoreFailures", re.compile(r"ignoreFailures\s*=\s*(\w+)"), "false"),
+    ("reportLevel", re.compile(r"reportLevel\s*=\s*Confidence\.valueOf\(\s*'(\w+)'\s*\)"), "LOW"),
+)
+
+# Los dos patrones de FindSecBugs que un servlet recien andamiado dispara por
+# oficio y que `andamiar.py` deja COMENTADOS a proposito: la plantilla no puede
+# afirmar que el valor se trate con seguridad, porque eso solo lo sabe quien
+# escriba `ejecutar()`.
+PATRONES_ABIERTOS_EN_SERVLET = frozenset({"SERVLET_PARAMETER", "SECSP"})
+
+
 def _version_tupla(texto: str) -> tuple[int, ...]:
     return tuple(int(p) for p in re.findall(r"\d+", texto)[:2]) or (0,)
 
 
-def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list) -> list[Hallazgo]:
+def comprobar_guardarrailes(tipo: str, gradle: str, exclusiones: str,
+                            decisiones: str) -> list[Hallazgo]:
+    """R-F14 · la cadena de verificacion no se debilita para que el build pase.
+
+    Las demas reglas miran el plug-in. Esta mira LA PUERTA, porque el resto del
+    sistema descansa en que siga encendida y hasta ahora nadie lo comprobaba:
+    `SKILL.md` lo prohibe por escrito --«ni relajar reportLevel ni
+    ignoreFailures»-- y el andamiaje deja la exclusion de `SECSP` comentada,
+    pero ninguna de las cuatro capas volvia a mirar esos tres sitios. En dos
+    pruebas E2E independientes del 19-sep-2026, con dos tipos de plug-in
+    distintos, el ejecutor acabo haciendo justo eso para sacar un
+    `BUILD SUCCESSFUL`: uno subio `reportLevel` a MEDIUM y otro descomento
+    `SECSP` con un motivo inventado, antes de escribir `ejecutar()`.
+
+    Activar la exclusion NO se prohibe --es una decision legitima una vez
+    escrito `ejecutar()`-- pero deja de ser gratis: hay que firmarla en
+    `docs/decisiones.md`, que es la pieza 2 del dossier y el sitio donde el
+    paso 6 la va a leer. Lo que esta regla impide es hacerlo en silencio.
+    """
+    hallazgos: list[Hallazgo] = []
+    for nombre, patron, esperado in AJUSTES_SPOTBUGS:
+        # TODAS las apariciones, no la primera: el bloque original puede
+        # quedarse intacto y anadirse otro debajo que lo pise --que es como se
+        # relaja una configuracion sin que el diff parezca que la relaja--.
+        valores = patron.findall(gradle)
+        if not valores:
+            hallazgos.append(
+                Hallazgo("R-F14", "error",
+                         f"{nombre} no aparece en build.gradle: el andamiaje lo fija en "
+                         f"«{esperado}» y sin el la puerta de SpotBugs no puede fallar")
+            )
+        elif any(v != esperado for v in valores):
+            malos = ", ".join(sorted({v for v in valores if v != esperado}))
+            hallazgos.append(
+                Hallazgo("R-F14", "error",
+                         f"{nombre} = {malos} en build.gradle, y el andamiaje lo "
+                         f"fija en «{esperado}»: relajarlo apaga la puerta de SpotBugs sin tocar "
+                         f"el codigo. Si un patron concreto sobra, se excluye ESE patron en "
+                         f"config/spotbugs/exclude.xml con su motivo al lado")
+            )
+    if tipo != "servlet" or not exclusiones.strip():
+        return hallazgos
+    try:
+        # Los `<Match>` COMENTADOS no sobreviven al parseo, que es justo lo que
+        # hace falta: el andamiaje deja el de SECSP dentro de un comentario.
+        raiz = ET.fromstring(exclusiones)
+    except ET.ParseError as error:
+        hallazgos.append(
+            Hallazgo("R-F14", "error",
+                     f"config/spotbugs/exclude.xml no es XML valido ({error}): SpotBugs no "
+                     f"aplicaria ninguna exclusion y nadie lo diria")
+        )
+        return hallazgos
+    activos = {
+        bug.get("pattern", "")
+        for bug in raiz.iter("Bug")
+    } & PATRONES_ABIERTOS_EN_SERVLET
+    if activos and not any(p in decisiones for p in activos):
+        hallazgos.append(
+            Hallazgo("R-F14", "error",
+                     f"exclude.xml activa {', '.join(sorted(activos))} y docs/decisiones.md no "
+                     f"lo menciona. El andamiaje la deja comentada a proposito: solo quien "
+                     f"escribio `ejecutar()` sabe si el valor se trata con seguridad. Si ya lo "
+                     f"decidiste, escribe la decision --es la pieza 2 del dossier--; si aun no, "
+                     f"vuelve a comentarla y deja la puerta en rojo, que es la verdad")
+        )
+    return hallazgos
+
+
+def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list, *,
+              gradle: str | None = None, exclusiones: str = "",
+              decisiones: str = "") -> list[Hallazgo]:
+    """`gradle=None` significa «no me han dado el fichero» y salta R-F14; un
+    `build.gradle` vacio o sin los ajustes SI es un hallazgo. Son cosas
+    distintas y confundirlas tenia un lado barato y otro caro: las llamadas
+    unitarias que solo ejercen otras reglas no tienen que fabricar un
+    `build.gradle`, y un proyecto real al que le falte no se escapa --`main()`
+    siempre pasa una cadena, aunque el fichero no exista--.
+    """
     hallazgos: list[Hallazgo] = []
     plugin = datos_contrato.get("plugin", {})
     tipo = plugin.get("tipo", "")
@@ -280,6 +375,9 @@ def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list) -> list[H
                          f"declara {clases_xml}")
             )
 
+    if gradle is not None:
+        hallazgos += comprobar_guardarrailes(tipo, gradle, exclusiones, decisiones)
+
     return hallazgos
 
 
@@ -290,8 +388,13 @@ def main() -> int:
     import contrato
     import verificar_superficie
 
-    if len(sys.argv) < 4:
-        print("uso: verificar_framework.py <contrato.md> <appian-plugin.xml> <dir-clases>")
+    # La raiz es OBLIGATORIA, y no por comodidad: de ella salen los tres
+    # ficheros de R-F14. Si fuera opcional, un orquestador que dejara de
+    # pasarla apagaria la regla sin que nadie lo notara --exactamente el modo
+    # de fallo que R-F14 existe para impedir--.
+    if len(sys.argv) < 5:
+        print("uso: verificar_framework.py <contrato.md> <appian-plugin.xml> <dir-clases> "
+              "<raiz-proyecto>")
         return 2
     datos = contrato.cargar(pathlib.Path(sys.argv[1]))
     xml = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
@@ -305,7 +408,17 @@ def main() -> int:
         print(f"ERROR no hay ninguna clase que analizar en {sys.argv[3]}: "
               f"¿se ha compilado el proyecto? Analizar cero clases NO es verificar.")
         return 1
-    hallazgos = comprobar(datos, xml, clases)
+    raiz = pathlib.Path(sys.argv[4])
+
+    def _texto(ruta: pathlib.Path) -> str:
+        return ruta.read_text(encoding="utf-8") if ruta.is_file() else ""
+
+    hallazgos = comprobar(
+        datos, xml, clases,
+        gradle=_texto(raiz / "build.gradle"),
+        exclusiones=_texto(raiz / "config" / "spotbugs" / "exclude.xml"),
+        decisiones=_texto(raiz / "docs" / "decisiones.md"),
+    )
     # PORTANTE `clases`, y no la regla de «todas las unidades a cero»: esta
     # puerta declara tres unidades, asi que `0 clases, 1 entradas, 1 salidas`
     # --cero en la dimension que importa, las demas sanas-- daba un insumo

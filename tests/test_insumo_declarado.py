@@ -55,7 +55,7 @@ def test_la_linea_de_insumo_no_esconde_los_ceros():
 @pytest.mark.parametrize(
     "script,argumentos",
     [
-        ("verificar_framework.py", ["{contrato}", "{xml}", "{clases}"]),
+        ("verificar_framework.py", ["{contrato}", "{xml}", "{clases}", "{raiz}"]),
         ("verificar_appmarket.py", ["{contrato}", "{clases}"]),
         ("verificar_bundles.py", ["{contrato}", "{recursos}"]),
         ("verificar_superficie.py", ["{clases}", "{indice}"]),
@@ -67,6 +67,7 @@ def test_cada_validador_declara_su_insumo(script, argumentos, tmp_path):
         "xml": str(REFERENCIA / "src" / "main" / "resources" / "appian-plugin.xml"),
         "clases": str(CLASES_REFERENCIA),
         "recursos": str(REFERENCIA / "src" / "main" / "resources"),
+        "raiz": str(REFERENCIA),
         "indice": str(RAIZ / "assets" / "indice-tipos-26.3.json"),
     }
     comando = [sys.executable, str(SCRIPTS / script)] + [a.format(**sustituciones) for a in argumentos]

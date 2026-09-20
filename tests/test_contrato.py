@@ -583,7 +583,10 @@ _NO_SON_SECCIONES = {
 }
 # Secciones reales del contrato que la guarda de forma NO cubre porque tienen
 # validador propio, mas especifico que «es un dict».
-_CON_VALIDADOR_PROPIO = {"version_anterior": "_validar_version_anterior"}
+_CON_VALIDADOR_PROPIO = {
+    "version_anterior": "_validar_version_anterior",
+    "confirmacion": "_validar_confirmacion",
+}
 
 
 def test_la_guarda_cubre_las_secciones_que_consume_CUALQUIER_script():

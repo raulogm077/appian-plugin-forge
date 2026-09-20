@@ -79,6 +79,42 @@ def test_un_tipo_que_no_se_puede_emitir_lo_para_la_puerta():
     assert any("tipo_java" in f for f in faltantes), faltantes
 
 
+# Lo que sigue NO es un tipo raro: es una cadena que no es un tipo. Mientras
+# «cualificado» significo «lleva un punto», estas pasaban la puerta, el
+# andamiador las emitia tal cual --que es su contrato-- y el error aparecia en
+# `javac`, a dos pasos de la causa. El primer caso salio de una prueba E2E real
+# el 19-sep-2026: un agente escribio la anotacion `@ParameterizedType` como si
+# fuera el tipo del parametro.
+@pytest.mark.parametrize(
+    "no_es_un_tipo",
+    [
+        "com.appiancorp.suiteapi.expression.annotations.ParameterizedType"
+        "(com.appiancorp.suiteapi.type.TypedValue)",
+        "java.util.List<String>",
+        "com.raul.dominio.Cosa cosa",
+        "com.raul..Cosa",
+        "com.raul.dominio.Cosa, com.raul.dominio.Otra",
+        "@ParameterizedType",
+    ],
+)
+def test_una_cadena_que_no_es_un_nombre_de_tipo_no_se_emite(no_es_un_tipo):
+    assert contrato.tipo_java_emitible(no_es_un_tipo) is None
+
+
+def test_la_puerta_para_el_tipo_que_no_es_un_tipo_y_lo_dice_en_el_mensaje():
+    datos = contrato.cargar(FIXTURES / "smart-service-minimo.md")
+    datos["entradas"][0]["tipo_java"] = (
+        "com.appiancorp.suiteapi.expression.annotations.ParameterizedType"
+        "(com.appiancorp.suiteapi.type.TypedValue)"
+    )
+    faltantes = contrato.validar(datos)
+    assert any("tipo_java" in f for f in faltantes), faltantes
+    # El mensaje tiene que servir para ARREGLARLO, no solo para rechazarlo: de
+    # esa forma se sale del error sin adivinar y sin entrar en un bucle.
+    mensaje = next(f for f in faltantes if "tipo_java" in f)
+    assert "javap" in mensaje, mensaje
+
+
 # --- placeholder no nulo (Critico 1 del gate de ciclo 1) -------------------
 #
 # Mismos `emitido` que arriba (`test_el_tipo_declarado_se_resuelve_a_algo_

@@ -72,55 +72,18 @@ El `mkdir` no es adorno: el shell abre la redirección **antes** de lanzar Gradl
 proyecto recién andamiado —donde `build/` todavía no existe— el comando sin él falla («No such
 file or directory») y no se construye nada.
 
-**En PowerShell 5.1 ese comando no vale, y no es el único del pipeline que hay que traducir.** Aquí
-no hay `&&`, y eso es error de parseo: ruidoso, se ve. El silencioso está en las **otras** líneas
-ejecutables que publica la skill —las que invocan
-`python "${CLAUDE_PLUGIN_ROOT}/scripts/verificar_todo.py"` y sus hermanas—, porque `${NOMBRE}` es
-sintaxis de **variable de PowerShell**, no de variable de entorno: se expande a cadena vacía y no
-avisa. Medido en este equipo (Windows 11, PS 5.1) con la variable de entorno **puesta**:
-`"${CLAUDE_PLUGIN_ROOT}/scripts/verificar_todo.py"` imprime `/scripts/verificar_todo.py`, y
-`"$env:CLAUDE_PLUGIN_ROOT/..."` imprime la ruta real. En PowerShell se escribe
-`$env:CLAUDE_PLUGIN_ROOT`. Copiable:
-
-```powershell
-New-Item -ItemType Directory -Force build
-& cmd /c ".\gradlew.bat build --console=plain > build\salida-build.log 2>&1"
-```
-
-La redirección va **dentro de `cmd`** a propósito, y el motivo es de fidelidad, no de veredicto.
-Conviene decirlo con precisión porque es la tercera redacción de este párrafo: las dos anteriores
-prometían un daño que al medirlo no aparecía. Capturado un fallo real de Gradle de las dos formas
-y pasados los dos logs por el lector, **el resultado es el mismo** —`fallido`, con el mismo
-motivo—. Hoy no hay ningún veredicto que se pierda por capturar con PowerShell.
-
-Lo que sí se pierde es que el log **sea copia de lo que Gradle escribió**. PowerShell transforma
-lo que le llega por stderr de dos maneras, las dos medidas: envuelve la **primera** línea en un
-`ErrorRecord` y la escribe prefijada con el nombre del ejecutable, y **refluye todas** las líneas
-al ancho de la consola —una de 250 caracteres salió partida en tres—. `cmd` no toca nada.
-
-Hoy no muerde, y conviene saber por qué exactamente, porque las razones fáciles son falsas. El
-marcador **no** siempre va por stdout: `BUILD SUCCESSFUL` sí, pero `BUILD FAILED` sale por stderr
-y se salva por un accidente —Gradle escribe una línea en blanco antes del bloque `FAILURE:`, y esa
-línea se come la decoración—. Y **no** todos los patrones van anclados: el que extrae el motivo
-(`Execution failed for task '…'`) se busca sin ancla, y sobrevive por ser corto, no por su
-posición. Lo que sí es sólido es que las líneas `> Task :…` viajan por stdout, así que el mapa de
-tareas —del que salen cuatro puertas— es inmune a las dos transformaciones.
-
-O sea: el margen existe, pero se apoya en dos accidentes y en una sola propiedad robusta. Un log
-que no es copia fiel deja de responder de sí mismo, y esta puerta existe para leer evidencia.
-
-La codificación da resultados distintos según quién mida, así que conviene saberlo antes de
-comprobarlo: un PowerShell 5.1 normal escribe **UTF-16LE con BOM** (`FF FE`), pero dentro de una
-sesión que traiga `Out-File:Encoding` fijado a `utf8` —Claude Code lo hace— sale **UTF-8 con BOM**
-(`EF BB BF`). Las dos las contempla el lector (`salida_build.py` reconoce BOM UTF-8, UTF-16 LE/BE y
-UTF-16 sin BOM), y lo que escribe `cmd` —ASCII puro en la práctica— entra por su rama UTF-8, con
-la de cp1252 detrás para los bytes que UTF-8 no admita. Si al medirlo sale UTF-8, mírese
-`$PSDefaultParameterValues` antes de concluir que la otra rama sobra.
+**En PowerShell 5.1 ese comando no vale, y no es el único del pipeline que hay que traducir** —ni
+el `&&`, ni los `${CLAUDE_PLUGIN_ROOT}` de las líneas ejecutables que publica la skill, que en
+PowerShell son sintaxis de variable de sesión y se expanden a cadena vacía sin avisar. La
+traducción completa —el comando equivalente, por qué la redirección va dentro de `cmd` en vez de
+nativa, qué pierde el log de fidelidad frente a lo que Gradle escribió, y la codificación
+(UTF-16LE con BOM frente a UTF-8 con BOM)— vive en
+`${CLAUDE_PLUGIN_ROOT}/skills/crear-plugin-appian/referencias/entorno-windows.md`.
 
 El `--console=plain`, en cambio, no es opcional en ningún shell.
 
 Ojo con lo que el propio certificado imprime cuando el log falta: repite la forma **bash**, que es
-la canónica del proyecto. En Windows, traducirla con el bloque de arriba.
+la canónica del proyecto. En Windows, traducirla con `referencias/entorno-windows.md`.
 
 Con eso, cada puerta de la capa de build se resuelve con el resultado real: verde si su tarea
 pasó, roja si el build falló, y **roja también si la salida no consta, está rancia** —anterior a
@@ -200,6 +163,28 @@ verdad vale más que uno que nadie puede cumplir.
 **Tres** de ellas no forman parte de `build` (`jacocoTestCoverageVerification`, `mutationTest`,
 `releaseCheck`): si el log no las menciona, nadie las ejecutó, y salen rojas diciendo exactamente
 eso.
+
+**Y hay que invocarlas, o el criterio de salida del paso 5 no lo cumple nadie.** Basta un comando,
+porque `releaseCheck` depende de las otras dos —y de `check` y de `verificarRevisionGit`—:
+
+```
+mkdir -p build && ./gradlew build releaseCheck --console=plain > build/salida-build.log 2>&1
+```
+
+`build` sigue haciendo falta al lado: `releaseCheck` no arrastra `assemble`, y sin JAR en
+`build/libs` la capa 4 sale roja. Y `verificarRevisionGit` **exige un worktree de git limpio**, así
+que esto va después del commit del slice, no antes: con cambios sin commitear el comando falla
+entero y ninguna de las tres puertas llega a ejecutarse. Medido el 19-sep-2026: de dos pruebas E2E
+con contrato RIGUROSO, las dos capturaron el log con un `./gradlew build` a secas y las dos se
+quedaron con `NOT_READY` y tres filas «ese comando no se ejecutó», sin saber qué comando faltaba.
+
+**La fila de PIT se llama por su umbral de mutación, pero PIT mide DOS cosas y las dos la
+bloquean**: `mutationThreshold = 85` y su **propia** cobertura de línea, `coverageThreshold = 90`,
+que no es la de JaCoCo de la fila de al lado —PIT solo cuenta las líneas de las clases que muta—.
+Sobre una clase pequeña eso muerde antes que la mutación: un constructor privado de utilidad, que
+nadie invoca, basta para dejar la cobertura de PIT por debajo de 90 con JaCoCo al 100 %. El fallo
+se lee `Line coverage of N is below threshold of 90` en `:pitest`, y se cierra **cubriendo** esa
+línea, nunca bajando el umbral. Medido el 20-sep-2026.
 
 **La de build reproducible no llega a verde nunca, y es a propósito.** La plantilla lo *configura*
 —`preserveFileTimestamps = false`, `reproducibleFileOrder = true`— pero ninguna tarea lo

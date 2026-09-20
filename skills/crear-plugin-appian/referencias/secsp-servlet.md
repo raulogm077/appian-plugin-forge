@@ -1,6 +1,6 @@
 # La excepción `SECSP` en un servlet recién andamiado
 
-Fuente: `SKILL.md` paso 4 (repo de desarrollo; no viaja con el plugin). Extraído del cuerpo
+Fuente: `SKILL.md` paso 4. Extraído del cuerpo
 principal en el cierre del ciclo 19 para bajar `SKILL.md` del tope de tamaño (hallazgo de
 `11-skill-reviewer.md:107`).
 
@@ -18,3 +18,21 @@ comentado, con el argumento completo, en el `config/spotbugs/exclude.xml` del pr
 se lee allí, no se copia aquí. Lo que **no** se hace es excluir el detector para que el build pase,
 ni relajar `reportLevel` ni `ignoreFailures` en `build.gradle`; y hasta que la decisión se tome, la
 puerta de SpotBugs del certificado sale en rojo, que es la verdad.
+
+Desde el 20-sep-2026, R-F14 lo comprueba: si la exclusión está **activa** y `docs/decisiones.md`
+no la menciona, la capa 1 sale en rojo. Activarla sigue siendo legítimo —es la decisión que este
+fichero describe—; lo que ya no se puede es tomarla en silencio.
+
+## El segundo, que aparece después: `SECXSS2`
+
+No lo dispara el andamiaje sino la implementación, así que llega cuando el `SECSP` ya se resolvió
+y sorprende. En cuanto `doGet()` escribe en el `PrintWriter` algo construido a partir del
+parámetro, FindSecBugs sigue el rastro hasta la petición y marca
+*«could be vulnerable to XSS in the Servlet»* — **también cuando lo que se escribe no puede llevar
+carga**, como un `boolean` interpolado en un JSON. El rastreo no distingue el tipo.
+
+Se cierra igual que el otro: **sin excluir nada**. Si el valor es de un conjunto cerrado, se
+escriben los literales completos y se elige entre ellos —`valido ? "{\"valid\":true}" :
+"{\"valid\":false}"`— en vez de concatenar; el detector deja de tener rastro que seguir. Si de
+verdad hay que devolver texto del cliente, se escapa antes, y eso sí es una exclusión que
+justificar en `docs/decisiones.md`, con R-F14 mirando.

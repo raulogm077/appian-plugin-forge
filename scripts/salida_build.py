@@ -45,6 +45,16 @@ RUTA_POR_DEFECTO = pathlib.Path("build") / "salida-build.log"
 # de la SKILL, y un test la ata a un literal propio para que no puedan divergir.
 COMANDO_DE_CAPTURA = "mkdir -p build && ./gradlew build --console=plain > build/salida-build.log 2>&1"
 
+# El de RIGUROSO, porque tres de sus cuatro puertas no forman parte de `build`
+# y sin este comando salen rojas para siempre: el criterio de salida del paso 5
+# no lo cumpliria nadie. `releaseCheck` arrastra `mutationTest`,
+# `jacocoTestCoverageVerification`, `check` y `verificarRevisionGit` --que exige
+# worktree limpio--, y `build` sigue al lado porque `releaseCheck` no arrastra
+# `assemble` y sin JAR la capa 4 sale roja.
+COMANDO_DE_CAPTURA_RIGUROSO = (
+    "mkdir -p build && ./gradlew build releaseCheck --console=plain > build/salida-build.log 2>&1"
+)
+
 # Ficheros cuyo cambio deja obsoleto un log anterior. `exclude.xml` esta en la
 # lista por el flujo del SECSP: descomentar la exclusion y no volver a
 # construir dejaria un log viejo certificando un codigo que ya no es el que se

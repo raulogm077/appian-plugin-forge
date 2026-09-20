@@ -55,13 +55,13 @@ def _tabla_campos(campos: list, con_required: bool) -> str:
 
 # Orden fijo: es el orden en que se preguntan en la entrevista (referencias/entrevista.md).
 NOTAS_DE_CAPACIDAD = (
+    ("parsea_formatos_ajenos", "El formato de entrada no lo controla Appian: valida el "
+                                "documento antes de pasarlo si tu proceso puede recibir datos "
+                                "corruptos o ajenos."),
     ("sale_a_la_red", "Puede fallar por timeout o por caida del servicio remoto: preve reintentos "
                        "en tu proceso si lo invocas de forma sincrona."),
     ("toca_credenciales", "Espera que la credencial ya este en el Secure Credentials Store de "
                            "Appian; no la pases como texto plano."),
-    ("parsea_formatos_ajenos", "El formato de entrada no lo controla Appian: valida el "
-                                "documento antes de pasarlo si tu proceso puede recibir datos "
-                                "corruptos o ajenos."),
     ("datos_personales", "Maneja datos personales: revisa la politica de retencion de tu "
                           "organizacion antes de registrar su salida en logs propios."),
 )
@@ -123,9 +123,17 @@ def render_ficha_appmarket(datos: dict) -> str:
         f"# {plugin.get('nombre', '')}",
         "",
         plugin.get("descripcion") or "_Sin descripcion declarada en el contrato._",
-        "",
-        f"**Subcategoria:** {clase.get('paleta') or '_sin declarar_'}",
     ]
+
+    # `clase.paleta` es especifica de smart-service (la subpaleta del paso de
+    # proceso, referencias/entrevista.md): function, writer-function y
+    # servlet nunca la piden en la entrevista, asi que su ficha prometia una
+    # subcategoria que ese tipo de plugin no puede tener. Se omite la linea
+    # entera en vez de imprimir un `_sin declarar_` que 3 de 4 tipos verian
+    # siempre.
+    paleta = clase.get("paleta")
+    if paleta:
+        lineas += ["", f"**Subcategoria:** {paleta}"]
 
     etiquetas = [t for clave, t in ETIQUETA_DE_CAPACIDAD if capacidades.get(clave)]
     if etiquetas:

@@ -26,6 +26,11 @@ def test_guia_de_servlet_no_promete_expresion_sail():
     assert "expresion sail" not in md.lower() and "expresión sail" not in md.lower()
 
 
+def test_guia_de_writer_function_menciona_saveInto():
+    md = gdu.render_guia_integracion(_cargar("writer-function-minimo.md"))
+    assert "saveInto" in md
+
+
 def test_tabla_de_entradas_lleva_columna_required_solo_en_smart_service():
     md_smart_service = gdu.render_guia_integracion(_cargar("smart-service-completo.md"))
     assert "Obligatorio" in md_smart_service
@@ -72,6 +77,17 @@ def test_ficha_incluye_nombre_descripcion_y_categoria():
 def test_ficha_sin_capacidades_no_lleva_nota_de_transparencia():
     md = gdu.render_ficha_appmarket(_cargar("function-minimo.md"))
     assert "Transparencia" not in md
+
+
+def test_ficha_de_function_no_promete_una_subcategoria_que_no_existe():
+    # clase.paleta es especifica de smart-service; function y servlet nunca
+    # la piden en la entrevista, asi que su ficha no debe prometer una
+    # "Subcategoria" que ese tipo de plugin no puede tener.
+    md_function = gdu.render_ficha_appmarket(_cargar("function-minimo.md"))
+    assert "Subcategoria" not in md_function
+
+    md_servlet = gdu.render_ficha_appmarket(_cargar("servlet-minimo.md"))
+    assert "Subcategoria" not in md_servlet
 
 
 def test_ficha_con_datos_personales_lleva_nota_de_transparencia():

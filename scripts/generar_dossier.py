@@ -257,8 +257,13 @@ def main_con_raiz(raiz) -> int:
     hallazgos = _leer_si_existe(raiz / ARCHIVO_REVISION)
     revision = None
     if hallazgos is not None:
+        # reversed(): la ULTIMA linea VEREDICTO, no la primera. Una revision
+        # con mas de una pasada -correccion + re-revision, el camino que
+        # describe el paso 6 de SKILL.md- deja varias lineas VEREDICTO en el
+        # fichero, y el dossier tiene que describir el estado actual, no el
+        # de la primera pasada.
         veredicto = next(
-            (l.strip() for l in hallazgos.splitlines() if l.strip().startswith("VEREDICTO")),
+            (l.strip() for l in reversed(hallazgos.splitlines()) if l.strip().startswith("VEREDICTO")),
             "sin linea VEREDICTO",
         )
         revision = f"`{ARCHIVO_REVISION}` — {veredicto}"

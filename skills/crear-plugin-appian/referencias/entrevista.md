@@ -29,7 +29,8 @@ Son dos cosas distintas y ninguna basta sola.
   comprueba un script:
   `python "${CLAUDE_PLUGIN_ROOT}/scripts/contrato.py" docs/contrato.md`.
   En PowerShell, `$env:CLAUDE_PLUGIN_ROOT` — `${…}` es sintaxis de variable de sesión y se
-  expande a cadena vacía sin avisar; el porqué, en `SKILL.md` § *ENTREVISTA*.
+  expande a cadena vacía sin avisar; el porqué, en
+  `${CLAUDE_PLUGIN_ROOT}/skills/crear-plugin-appian/referencias/entorno-windows.md`.
 - **Puerta de confianza** — *«¿puedo predecir tu reacción a las tres siguientes preguntas
   que haría?»*. Si no, seguir. Con **suelo antibucle**: si tras varias rondas la confianza
   no sube, parar y preguntar qué falta en vez de seguir indagando indefinidamente.

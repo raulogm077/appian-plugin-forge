@@ -768,8 +768,12 @@ def ejecutar(
     paquete_dominio = contrato.paquete_de_dominio(datos_contrato) if datos_contrato else ""
 
     argumentos = {
+        # La raiz va al final porque de ella salen los tres ficheros de R-F14
+        # --`build.gradle`, `config/spotbugs/exclude.xml` y `docs/decisiones.md`--:
+        # la unica regla que mira la PUERTA en vez del plug-in.
         "Reglas del framework de Appian": [
             str(contrato_md), str(recursos / "appian-plugin.xml"), str(clases),
+            str(raiz_proyecto),
         ],
         "Politicas AppMarket": [str(contrato_md), str(clases)],
         "Bundles y locales": [str(contrato_md), str(recursos)],
@@ -980,9 +984,17 @@ def _resolver_delegadas(
             # es delegada--. El `tarea and` es lo que deja pasar de largo a la
             # puerta del bytecode del JAR, que no tiene tarea asociada.
             p.estado = "rojo"
+            # Y se dice CON QUE se arregla. Decir solo «no se ejecuto» deja al
+            # lector buscando el comando: medido el 19-sep-2026, dos pruebas
+            # E2E con contrato RIGUROSO capturaron el log con un `./gradlew
+            # build` a secas, leyeron estas tres filas en rojo y ninguna de las
+            # dos dio con el comando que faltaba --una lo dio por normal y
+            # siguio hasta el dossier--. El comando sale de `salida_build`, que
+            # es de donde sale tambien el de la captura corriente.
             p.evidencia = (
                 f"`{tarea}` no aparece en la salida del build: ese comando no se "
-                f"ejecuto — {matiz}"
+                f"ejecuto — {matiz}. Se capturan las tres de una vez con "
+                f"`{sb.COMANDO_DE_CAPTURA_RIGUROSO}`, sobre un worktree ya commiteado"
             )
         elif p.nombre in PUERTAS_QUE_EL_BUILD_NO_APRUEBA:
             p.evidencia = f"{resultado.motivo}, que NO la comprueba: {matiz}"

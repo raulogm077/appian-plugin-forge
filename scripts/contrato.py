@@ -104,6 +104,15 @@ TIPOS_JAVA_LANG = frozenset({
     "Character", "Number", "Object",
 })
 
+# Un nombre de tipo Java: identificadores separados por puntos. Sin parentesis,
+# sin espacios, sin comas y sin `<>` —los genericos no los infiere Appian, y
+# ningun contrato canonico los usa—. Lo que esto ataja no es un tipo raro: es
+# una CADENA QUE NO ES UN TIPO colandose hasta el `.java` (ver
+# `tipo_java_emitible`).
+PATRON_NOMBRE_TIPO_JAVA = re.compile(
+    r"[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*"
+)
+
 # Los dos alias que la auditoria bendice expresamente para fechas: R-F04
 # rechaza `java.util.Date` y manda usar `java.sql.Date`/`Time`/`Timestamp`.
 # Se resuelven aqui para que el contrato pueda escribir `Timestamp` a secas,
@@ -627,12 +636,22 @@ def tipo_java_emitible(tipo: str) -> str | None:
     Devuelve None cuando el tipo no es de `java.lang`, no es uno de los alias
     de `java.sql` y tampoco viene cualificado: eso no compilaria, y es mejor
     decirlo en la puerta que en `javac`.
+
+    «Cualificado» exige ser un NOMBRE DE TIPO, no solo llevar un punto. Mientras
+    basto con el punto, la puerta dejo pasar
+    `com.appiancorp.suiteapi.expression.annotations.ParameterizedType(com.appiancorp.suiteapi.type.TypedValue)`
+    --una anotacion escrita como si fuera un tipo-- y el andamiador la emitio
+    tal cual, como manda su contrato: el fallo no aparecio hasta `javac`, con la
+    causa a dos pasos de distancia, en un fichero que nadie escribio a mano.
+    Visto en una prueba E2E real el 19-sep-2026.
     """
     if not isinstance(tipo, str) or not tipo.strip():
         return None
     base, sufijo = tipo.strip(), ""
     while base.endswith("[]"):
         base, sufijo = base[:-2], sufijo + "[]"
+    if not PATRON_NOMBRE_TIPO_JAVA.fullmatch(base):
+        return None
     if base in ALIAS_JAVA_SQL:
         return ALIAS_JAVA_SQL[base] + sufijo
     if base in TIPOS_JAVA_LANG:
@@ -909,17 +928,7 @@ def validar(datos: dict) -> list[str]:
     if plugin.get("perfil") and plugin["perfil"] not in PERFILES:
         faltantes.append(f"plugin.perfil: «{plugin['perfil']}» no es uno de {sorted(PERFILES)}")
 
-    # Puerta de confianza de la entrevista (spec de Fase 1 §6.2), hecha comprobable
-    # (spec 2026-09-18, capacidad B, decision E1-E2). `seccion()` ya devuelve `{}`
-    # sobre un valor mal formado, asi que un `confirmacion = "si"` cae aqui igual
-    # que un bloque ausente -- una sola linea cubre las dos formas de faltar.
-    confirmacion = seccion(datos, "confirmacion")
-    if confirmacion.get("usuario_confirmo") is not True:
-        faltantes.append(
-            "confirmacion.usuario_confirmo: tiene que ser `true` -- el usuario no ha "
-            "confirmado el contrato con un \"si\" explicito; no se genera nada sin el "
-            "(referencias/entrevista.md)"
-        )
+    faltantes += _validar_confirmacion(datos)
 
     # Bien formados, no solo presentes. Los tres viajan al `.java`, al
     # manifiesto y a la RUTA de los ficheros generados: `paquete` se convierte
@@ -973,8 +982,10 @@ def validar(datos: dict) -> list[str]:
                 faltantes.append(f"entradas[{i}].{campo}")
         if entrada.get("tipo_java") and tipo_java_emitible(entrada["tipo_java"]) is None:
             faltantes.append(
-                f"entradas[{i}].tipo_java: «{entrada['tipo_java']}» no es de java.lang ni viene "
-                f"cualificado; el .java se generaria sin import y no compilaria"
+                f"entradas[{i}].tipo_java: «{entrada['tipo_java']}» no es un nombre de tipo Java "
+                f"de java.lang ni viene cualificado; el .java no compilaria. Un tipo es "
+                f"`Paquete.Clase`, sin parentesis ni genericos: si dudas del tipo exacto, "
+                f"`javap` sobre el JAR del SDK o el agente appian-docs-researcher"
             )
         if tipo == "smart-service":
             valor = entrada.get("required")
@@ -1049,8 +1060,10 @@ def validar(datos: dict) -> list[str]:
                 faltantes.append(f"salidas[{i}].{campo}")
         if salida.get("tipo_java") and tipo_java_emitible(salida["tipo_java"]) is None:
             faltantes.append(
-                f"salidas[{i}].tipo_java: «{salida['tipo_java']}» no es de java.lang ni viene "
-                f"cualificado; el .java se generaria sin import y no compilaria"
+                f"salidas[{i}].tipo_java: «{salida['tipo_java']}» no es un nombre de tipo Java "
+                f"de java.lang ni viene cualificado; el .java no compilaria. Un tipo es "
+                f"`Paquete.Clase`, sin parentesis ni genericos: si dudas del tipo exacto, "
+                f"`javap` sobre el JAR del SDK o el agente appian-docs-researcher"
             )
 
     # La FORMA antes que el contenido: sin esto, `capacidades = 5` hacia
@@ -1073,6 +1086,25 @@ def validar(datos: dict) -> list[str]:
     faltantes += _validar_version_anterior(datos.get("version_anterior"))
 
     return faltantes
+
+
+def _validar_confirmacion(datos: dict) -> list[str]:
+    """Puerta de confianza de la entrevista (spec de Fase 1 §6.2), hecha comprobable
+    (spec 2026-09-18, capacidad B, decision E1-E2). `seccion()` ya devuelve `{}`
+    sobre un valor mal formado, asi que un `confirmacion = "si"` cae aqui igual
+    que un bloque ausente -- una sola linea cubre las dos formas de faltar. Con
+    validador propio (como `version_anterior`) porque su mensaje es de CAMPO
+    (`confirmacion.usuario_confirmo: ...`), no de SECCION -- no encaja en la
+    guarda generica de arriba, que solo sabe emitir `confirmacion: ...`.
+    """
+    confirmacion = seccion(datos, "confirmacion")
+    if confirmacion.get("usuario_confirmo") is not True:
+        return [
+            "confirmacion.usuario_confirmo: tiene que ser `true` -- el usuario no ha "
+            "confirmado el contrato con un \"si\" explicito; no se genera nada sin el "
+            "(referencias/entrevista.md)"
+        ]
+    return []
 
 
 def _validar_version_anterior(anterior) -> list[str]:

@@ -1,4 +1,5 @@
 import pathlib
+import re
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -615,3 +616,28 @@ def test_el_contrato_de_FUERA_del_destino_se_sigue_copiando(tmp_path):
     copia = destino / "docs" / "contrato.md"
     assert copia in escritos
     assert copia.read_bytes() == origen.read_bytes()
+
+
+def test_cada_compileOnly_tiene_su_testImplementation():
+    """Gradle no propaga `compileOnly` al sourceSet de test.
+
+    Las tres dependencias que el contenedor provee en runtime van
+    `compileOnly` --para que el validador de empaquetado compruebe que no
+    acaban en META-INF/lib-- y por eso cada una necesita ADEMAS su linea de
+    test: sin ella, el primer test que toque el adaptador no compila, y el
+    sintoma («package javax.servlet.http does not exist») aparece mucho despues
+    del andamiaje, cuando ya nadie mira la plantilla. Le paso a la de servlet,
+    la unica de las tres que se quedo sin par: medido en una prueba E2E el
+    20-sep-2026, escribiendo el primer test del adaptador de un servlet.
+    """
+    plantilla = (pathlib.Path(__file__).resolve().parents[1]
+                 / "assets" / "plantillas" / "comun" / "build.gradle.tmpl")
+    texto = plantilla.read_text(encoding="utf-8")
+    compile_only = set(re.findall(r"compileOnly\s+'([^']+)'", texto))
+    de_test = set(re.findall(r"testImplementation\s+'([^']+)'", texto))
+    assert compile_only, "la plantilla dejo de declarar compileOnly: este test ya no mira nada"
+    sin_par = compile_only - de_test
+    assert not sin_par, (
+        f"{sorted(sin_par)} va en compileOnly y no en testImplementation: un test del "
+        f"adaptador no compilara, y el error saldra lejos de aqui"
+    )

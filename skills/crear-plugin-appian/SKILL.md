@@ -21,7 +21,7 @@ La spec de referencia es `docs/superpowers/specs/2026-08-08-appian-plugin-forge-
 secciones citadas son las suyas. Las rutas con el prefijo `${CLAUDE_PLUGIN_ROOT}/` apuntan a
 ficheros del propio plugin: Claude Code define esa variable cuando la skill corre como plugin
 cargado (`--plugin-dir` o instalado), y si se trabaja dentro del repo del forge sin cargarlo
-como plugin, se sustituye por la raíz `appian-plugin-forge/`. Las tres referencias de este
+como plugin, se sustituye por la raíz `appian-plugin-forge/`. Las referencias de este
 directorio se citan enteras la primera vez y como `referencias/<fichero>.md` a partir de ahí.
 
 ## When to Use
@@ -163,7 +163,11 @@ slice. La lógica va en el **dominio**, que no importa `com.appiancorp.*`; el ad
 solo traduce.
 
 El agente `appian-plugin-forge:plugin-compiler-fixer` --lanzado con `Agent`-- cierra el bucle
-compilar/corregir de cada slice. Para cualquier duda sobre una firma, una clave o un valor
+compilar/corregir de cada slice. Se le lanza sin memoria de esta conversación, así que el
+prompt lleva lo mínimo que necesita para no adivinar: la ruta absoluta del proyecto generado
+y la tarea del plan que se acaba de implementar —«Compila y corrige
+`<ruta-absoluta-del-proyecto-generado>`. Tarea actual del plan: `<la tarea de docs/plan.md que
+se acaba de escribir>`. Devuelve el informe completo.»—. Para cualquier duda sobre una firma, una clave o un valor
 admitido de la API de Appian, la jerarquía de fuentes es `javap` sobre el JAR del SDK > agente
 `appian-plugin-forge:appian-docs-researcher` > javadoc web (spec §6.3) — la guía
 local (`docs/AI Plugin Generator skill Support Guide.md`, repo de desarrollo; no viaja con el
@@ -180,7 +184,10 @@ vacío y con el comodín de versión— en `referencias/entorno-windows.md`.
 un `tipo_java` o confirmar que una clase existe— no hay JAR en ninguna parte. Ahí la jerarquía
 baja un escalón por necesidad, no por comodidad: se usa el agente
 `appian-plugin-forge:appian-docs-researcher` **y se marca el hecho como no verificado contra el
-JAR**, para volver a comprobarlo en el paso 4. Es lo que manda spec §6.3: cuando no hay
+JAR**, para volver a comprobarlo en el paso 4. Se le lanza con la pregunta concreta y qué
+decisión depende de ella, nunca con la duda general —«Necesito saber
+`<pregunta concreta sobre la API de Appian>` para decidir `<qué campo o tipo_java depende de la
+respuesta>`. Marca el hecho como no verificado contra el JAR.»—. Es lo que manda spec §6.3: cuando no hay
 fundamento, se marca; no se aparenta certeza.
 
 **Prerequisitos de entorno**, que esta skill da por supuestos y conviene comprobar una vez: JDK 17
@@ -230,6 +237,16 @@ El `mkdir` no es adorno y en PowerShell el comando es otro; por qué, y qué hac
 cuando la salida no consta, está rancia, está truncada o su código contradice al log, en
 `referencias/certificado.md` § *La salida de `./gradlew build`*.
 
+**Con perfil RIGUROSO ese comando no basta, y el criterio de salida se vuelve inalcanzable si no
+se sabe**: tres de sus cuatro puertas —`jacocoTestCoverageVerification`, `mutationTest` y
+`releaseCheck`— **no forman parte de `build`**, así que sin invocarlas salen en rojo para siempre.
+`releaseCheck` arrastra las tres y exige un worktree de git limpio, así que el commit del slice va
+antes:
+
+```
+mkdir -p build && ./gradlew build releaseCheck --console=plain > build/salida-build.log 2>&1
+```
+
 **El criterio no hay que aplicarlo a mano: el certificado lo publica.** Su cabecera abre con
 `**STATUS: READY_FOR_APPIAN_SUBMISSION**` o `**STATUS: NOT_READY**`, y cuando dice `NOT_READY`
 lista debajo qué puerta lo impide y por qué, una línea por motivo — es este mismo criterio de
@@ -265,6 +282,14 @@ compara el código contra el contrato, requisito a requisito, y comprueba lo que
 mecaniza: separación dominio/adaptador, ausencia de estado mutable en clases de función,
 `ServiceLocator` dentro de constructores, manejo de errores y de recursos. Sus hallazgos se
 corrigen antes de emitir el expediente.
+
+Se le lanza sin memoria de lo que se acaba de construir —esa distancia es la ventaja, no un
+defecto—, así que el prompt le da lo que necesita para no adivinar en su lugar: la ruta absoluta
+del proyecto generado y dónde está cada cosa —«Revisa `<ruta-absoluta-del-proyecto-generado>`
+contra su `docs/contrato.md`. El código está en `src/`. Devuelve el veredicto en el formato
+obligatorio de tu agente.»—. Un prompt que solo diga «revisa esto» es indistinguible de una
+revisión sin hacer: el agente puede acabar leyendo de menos y dando `cumple` sin haber mirado lo
+que hace falta.
 
 **Su salida se escribe tal cual en `docs/hallazgos-revision.md`**, en el proyecto generado, y
 se le añade la fecha y el rango revisado. No es burocracia: sin ese rastro, un dossier no puede

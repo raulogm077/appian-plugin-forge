@@ -29,9 +29,15 @@ dependencies {
     testImplementation platform('org.junit:junit-bom:5.13.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testImplementation 'org.mockito:mockito-core:5.20.0'
-    // Solo para cargar y probar las clases del adaptador Appian.
+    // Solo para cargar y probar las clases del adaptador Appian. Gradle NO
+    // propaga `compileOnly` al sourceSet de test, asi que cada una de las tres
+    // de arriba necesita su linea aqui o el test del adaptador ni siquiera
+    // compila. La de servlet faltaba, y el sintoma --«package javax.servlet.http
+    // does not exist»-- aparece al escribir el primer test del adaptador, no al
+    // andamiar: medido en una prueba E2E el 20-sep-2026.
     testImplementation 'com.appian:appian-plug-in-sdk:26.3'
     testImplementation 'log4j:log4j:1.2.17'
+    testImplementation 'javax.servlet:javax.servlet-api:4.0.1'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
     spotbugsPlugins 'com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0'
