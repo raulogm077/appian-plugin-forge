@@ -1227,3 +1227,30 @@ def test_el_patron_de_tests_solo_casa_citas_del_plugin():
         f"`PATRON_TEST` dejo de casar una cita legitima del plugin: "
         f"{re.findall(skill_lint.PATRON_TEST, propia)}"
     )
+
+
+# Las tres exigencias de la politica de AppMarket que NINGUN script mecaniza y
+# que por tanto solo existen si el revisor las lleva escritas. Cada pareja es
+# (marca en el fichero, por que no la puede cubrir un script).
+#
+# Por que este guardian: hasta el 21-sep-2026 dos de ellas se daban por
+# «delegadas al revisor» y NO estaban en su fichero. Una delegacion que nadie
+# escribio es la misma vacuidad que este repositorio persigue en otras capas:
+# parece cubierta y no la mira nadie.
+DELEGACIONES_DE_POLITICA = (
+    ("Closeable", "SpotBugs no reporta el patron que lo veria: es experimental"),
+    ("doGet", "R-A01 esta exento en servlets, asi que el contexto de un usuario "
+              "concreto pasa todas las capas mecanicas"),
+    ("seguridad de Appian", "«no dar acceso a contenido que el usuario no tendria» "
+                            "es un juicio, no un patron de bytecode"),
+)
+
+
+def test_el_revisor_lleva_escritas_las_politicas_que_ningun_script_comprueba():
+    revisor = _texto("agents/plugin-contract-reviewer.md")
+    for marca, porque in DELEGACIONES_DE_POLITICA:
+        assert marca in revisor, (
+            f"`agents/plugin-contract-reviewer.md` ya no menciona «{marca}». {porque}. "
+            f"Si se quita de ahi, deja de mirarlo NADIE — y "
+            f"`docs/auditoria-politicas-appmarket-vs-forge.md` la sigue contando como delegada."
+        )

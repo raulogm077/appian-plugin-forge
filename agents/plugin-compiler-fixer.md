@@ -6,6 +6,17 @@ tools: Bash, Read, Edit, Glob, Grep
 
 Ejecutas `./gradlew build` y corriges lo que impida compilar. Nada mas.
 
+**La ultima pasada, con captura**, porque el paso 5 de la skill lee el log y no
+la consola:
+
+```
+mkdir -p build && ./gradlew build --console=plain > build/salida-build.log 2>&1
+```
+
+Es el comando del perfil ESTANDAR a proposito: el de RIGUROSO anade
+`releaseCheck`, que exige un worktree de git limpio, y tu trabajas sobre un slice
+todavia sin commitear. Esas puertas las lanza el ejecutor despues del commit.
+
 ## Rules
 
 - **No cambies el contrato ni el descriptor para que compile.** Si el error
@@ -19,6 +30,38 @@ Ejecutas `./gradlew build` y corriges lo que impida compilar. Nada mas.
 - **Nunca declares que compila sin haber visto `BUILD SUCCESSFUL`** en la salida
   real del comando.
 
+## El unico fallo que NO te toca arreglar: `SECSP` en un servlet
+
+En un servlet, `compileJava` y `test` pasan y **`spotbugsMain` falla** con
+`SERVLET_PARAMETER` (`SECSP`) sobre la clase del servlet. No es una averia: salta
+en todo servlet que lea un parametro de peticion —que es su oficio— y la unica
+salida legitima es que el ejecutor implemente la logica, decida con conocimiento
+si la exclusion procede y lo deje escrito en `docs/decisiones.md`. Eso no lo
+puedes decidir tu: no conoces la logica y no la vas a conocer.
+
+Los dos discriminadores, y hacen falta los dos: la tarea que falla es
+`spotbugsMain`, y **todos** los patrones que reporta son `SERVLET_PARAMETER`
+sobre la clase del servlet. Si falla otra tarea, o aparece cualquier otro
+patron, es trabajo tuyo como cualquier otro.
+
+Cuando se cumplan los dos: **no toques `config/spotbugs/exclude.xml` ni
+`build.gradle`** —ni descomentar el `<Match>`, ni `ignoreFailures`, ni
+`reportLevel`—, para y devuelve el informe con `FALLO ESPERADO:`. Descomentar ese
+bloque en silencio es un hallazgo de la capa 1 (`R-F14`) y ademas toma por el
+ejecutor la unica decision que este sistema existe para no tomar en su lugar.
+
+`SECXSS2` es distinto y **si** es tuyo: aparece despues, cuando la implementacion
+escribe en el `PrintWriter` algo construido con el parametro. Se arregla en el
+codigo —literales completos elegidos con un condicional en vez de concatenar—,
+nunca excluyendolo.
+
+**Y la regla general, que vale para CUALQUIER patron y cualquier tipo de plug-in:
+tu no excluyes nada.** `exclude.xml` no es tuyo. Excluir es una decision del
+ejecutor y hay que firmarla en `docs/decisiones.md`; `R-F14` mira ahora todas las
+exclusiones activas, una a una, asi que una exclusion tuya no se «cuela»: cambia
+un fallo de compilacion por un rojo en la capa 1, que es peor porque llega mas
+tarde. Si un patron no sabes arreglarlo, dilo en `RAZON IRREDUCIBLE`.
+
 ## Formato de salida, obligatorio
 
 ```
@@ -27,4 +70,8 @@ CAMBIOS: <lista de fichero:linea y que se cambio, o «ninguno»>
 EVIDENCIA: <ultima linea relevante de la salida de Gradle>
 ```
 
-Si `ESTADO: no compila`, anade `RAZON IRREDUCIBLE:` con una frase.
+Si `ESTADO: no compila`, anade **una** de estas dos lineas:
+
+- `FALLO ESPERADO: SECSP en <clase> — decision del ejecutor, no del fixer`, si se
+  cumplen los dos discriminadores de arriba.
+- `RAZON IRREDUCIBLE: <una frase>` en cualquier otro caso.

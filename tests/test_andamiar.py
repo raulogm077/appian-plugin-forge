@@ -232,6 +232,49 @@ def test_servlet_seccion_opcional_del_contrato_tiene_prioridad():
     assert v["PARAMETRO"] == "idPeticion"
 
 
+def test_el_smart_service_USA_la_clave_de_error_que_su_bundle_declara(tmp_path):
+    """Una clave horneada en el bundle y que nadie invoca es una promesa muerta.
+
+    `error.unexpected` viaja en los dos locales **con su hueco `{0}`**, que solo
+    tiene sentido si alguien le pasa el identificador de correlacion. La
+    plantilla no la usaba: construia el `SmartServiceException` pelado y cableaba
+    la frase en castellano, asi que un Appian en `_en_US` ensenaba espanol y la
+    clave no la leia nadie. Lo encontro un agente revisor en la tanda E2E del
+    20-sep-2026, sobre un smart-service recien andamiado y sin tocar — o sea que
+    lo arrastraba TODO smart-service generado por este forge.
+
+    `userMessage(String, Object...)` existe: comprobado con `javap` sobre
+    `com.appian:appian-plug-in-sdk:26.3`, que es la fuente que manda la skill.
+    """
+    escritos = andamiar.generar(_contrato("smart-service"), PLANTILLAS, tmp_path, CONTRATO_ORIGEN_DUMMY)
+    assert escritos
+
+    # Por el sufijo de locale, no por `.properties` a secas: el wrapper de
+    # Gradle tambien acaba en `.properties` y colarlo aqui pondria el aserto de
+    # paridad en rojo por un fichero que no es un bundle.
+    bundles = [r for r in escritos if "_en_US" in r.name or "_es_ES" in r.name]
+    assert bundles, "el smart-service dejo de llevar bundle: el aserto de abajo no mediria nada"
+    declarantes = [
+        r for r in bundles if "error.unexpected" in r.read_text(encoding="utf-8")
+    ]
+    assert len(declarantes) == len(bundles), (
+        "algun locale dejo de declarar `error.unexpected`: "
+        f"la declaran {[r.name for r in declarantes]} de {[r.name for r in bundles]}"
+    )
+
+    java = [r for r in escritos if r.suffix == ".java"]
+    assert java, "no se genero ninguna clase java"
+    fuente = "\n".join(r.read_text(encoding="utf-8") for r in java)
+    assert '.userMessage("error.unexpected"' in fuente, (
+        "el smart-service andamiado vuelve a no usar `error.unexpected`: la clave viaja en los "
+        "dos bundles con su hueco {0} y no la invoca nadie"
+    )
+    assert "Se produjo un error" not in fuente, (
+        "vuelve a haber una frase de error cableada en castellano en la plantilla: en un Appian "
+        "con locale `_en_US` se veria en espanol, que es justo lo que el bundle existe para evitar"
+    )
+
+
 def test_generar_servlet_no_deja_marcadores_sin_resolver(tmp_path):
     escritos = andamiar.generar(_contrato("servlet"), PLANTILLAS, tmp_path, CONTRATO_ORIGEN_DUMMY)
     assert escritos
@@ -641,3 +684,31 @@ def test_cada_compileOnly_tiene_su_testImplementation():
         f"{sorted(sin_par)} va en compileOnly y no en testImplementation: un test del "
         f"adaptador no compilara, y el error saldra lejos de aqui"
     )
+
+
+def test_la_function_NO_hornea_una_clave_de_error_que_no_puede_usar(tmp_path):
+    """El reverso del test de arriba: una clave muerta tambien es una promesa.
+
+    `error.unexpected` viajaba tambien en los bundles de `function` (y de
+    `writer-function`, que reusa los mismos), donde **no la puede leer nadie**:
+    el unico canal del SDK que resuelve una clave de bundle es
+    `SmartServiceException.userMessage(...)`, y del lado de expresion no hay
+    equivalente. Comprobado sobre el JAR de `com.appian:appian-plug-in-sdk:26.3`:
+    de sus 988 clases, `userMessage` solo aparece en `SmartServiceException` y
+    en su `Builder`.
+
+    Dos razones para vigilarlo: el bundle de una function es lo que Appian lee
+    para pintar la ayuda de la funcion, y una clave con un hueco `{0}` que nadie
+    rellena invita a copiarla a un sitio donde tampoco funcione.
+    """
+    for tipo in ("function", "writer-function"):
+        escritos = andamiar.generar(_contrato(tipo), PLANTILLAS, tmp_path / tipo,
+                                    CONTRATO_ORIGEN_DUMMY)
+        bundles = [r for r in escritos if "_en_US" in r.name or "_es_ES" in r.name]
+        assert bundles, f"{tipo} dejo de llevar bundle: el aserto de abajo no mediria nada"
+        con_clave = [r.name for r in bundles
+                     if "error.unexpected=" in r.read_text(encoding="utf-8")]
+        assert not con_clave, (
+            f"{tipo} vuelve a hornear `error.unexpected` en {con_clave}, y del lado de "
+            f"expresion no hay `userMessage` que la lea: es boilerplate muerto"
+        )

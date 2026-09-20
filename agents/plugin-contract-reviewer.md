@@ -19,8 +19,23 @@ mecanico; tu miras lo que solo se puede juzgar leyendo.
    la clase entera; el matiz por metodo es tuyo.
 5. **Errores**: mensaje de usuario sin datos sensibles y con identificador de
    correlacion; el detalle, al log.
-6. **Recursos**: `try-with-resources`, timeouts finitos y tope de tamano cuando
-   el contrato declara red o parseo.
+6. **Recursos**: todo `Closeable` se cierra en `try-with-resources` o en un
+   `finally`, **siempre, declare el contrato lo que declare**. Y timeouts
+   finitos y tope de tamano cuando declara red o parseo.
+   Esto es tuyo del todo: medido el 21-sep-2026, SpotBugs da BUILD SUCCESSFUL
+   sobre un stream que nunca se cierra — el patron que lo veria es de categoria
+   experimental y no se reporta. **Si tu no lo miras, no lo mira nadie.**
+7. **De quien es el contexto** (politica de AppMarket: *"Plug-ins must not
+   directly use the context of a specific user, but must use the context
+   provided via the initial constructor"*). En un servlet, `R-A01` esta exento
+   a proposito, asi que resolver el contexto de un usuario **concreto** dentro
+   de `doGet`/`doPost` pasa todas las capas mecanicas. Lo legitimo es el del
+   `request`; nombrar a un usuario es escalada de privilegios.
+8. **Que el plug-in no se pase de lo que anuncia**, en las dos formas que la
+   politica de AppMarket nombra aparte y que ningun script juzga: **sacar datos
+   del cliente** a donde el contrato no dice (mirar con lupa cuando declara red
+   o datos personales), y **saltarse la seguridad de Appian** dando acceso a
+   contenido que el usuario que invoca no tendria por su cuenta.
 
 ## Rules
 

@@ -82,6 +82,17 @@ class ClaseLeida:
     cadenas: set[str]
     metodos: list[MetodoLeido]
     anotaciones_de_clase: set[str] = dataclasses.field(default_factory=set)
+    #: Pares `(tipo, nombre_de_miembro)` de lo que esta clase INVOCA o LEE:
+    #: `("java.util.Locale", "setDefault")`. Sale de resolver cada `Methodref`,
+    #: `InterfaceMethodref` y `Fieldref` contra su `CONSTANT_Class` y su
+    #: `NameAndType`, enlace que antes se tiraba.
+    #:
+    #: Por que hace falta: `tipos_referenciados` y `cadenas` son dos conjuntos
+    #: SUELTOS, asi que una regla que los cruce no puede saber si las dos
+    #: senales vienen de la misma llamada — es la fragilidad que R-A02, R-A05 y
+    #: R-A06 declaran por escrito. Con el par resuelto, una regla sobre un
+    #: metodo concreto de un tipo concreto es EXACTA, como R-A10.
+    miembros_invocados: set[tuple[str, str]] = dataclasses.field(default_factory=set)
 
 
 def tipos_de_descriptor(descriptor: str) -> set[str]:
@@ -117,6 +128,13 @@ def leer(ruta: pathlib.Path) -> ClaseLeida:
     utf8: dict[int, str] = {}
     indices_clase: list[int] = []
     indices_nombre_y_tipo: list[tuple[int, int]] = []
+    # Los tres mapas que hacen falta para resolver `miembros_invocados`. Se
+    # guardan por INDICE DE POOL —no solo el valor— porque una referencia a
+    # miembro apunta a sus dos mitades por indice, y el pool admite referencias
+    # hacia adelante: resolver dentro del bucle fallaria. Se resuelve al final.
+    clase_por_indice: dict[int, int] = {}
+    nombre_y_tipo_por_indice: dict[int, tuple[int, int]] = {}
+    referencias_a_miembro: list[tuple[int, int]] = []
 
     pos = 10
     indice = 1
@@ -130,9 +148,15 @@ def leer(ruta: pathlib.Path) -> ClaseLeida:
             pos += longitud
         else:
             if tag == TAG_CLASS:
-                indices_clase.append(struct.unpack_from(">H", datos, pos)[0])
+                idx_nombre_clase = struct.unpack_from(">H", datos, pos)[0]
+                indices_clase.append(idx_nombre_clase)
+                clase_por_indice[indice] = idx_nombre_clase
             elif tag == TAG_NAME_AND_TYPE:
-                indices_nombre_y_tipo.append(struct.unpack_from(">HH", datos, pos))
+                par = struct.unpack_from(">HH", datos, pos)
+                indices_nombre_y_tipo.append(par)
+                nombre_y_tipo_por_indice[indice] = par
+            elif tag in (TAG_FIELDREF, TAG_METHODREF, TAG_INTERFACE_METHODREF):
+                referencias_a_miembro.append(struct.unpack_from(">HH", datos, pos))
             tamano = TAMANOS_FIJOS.get(tag)
             if tamano is None:
                 raise ValueError(f"tag desconocido {tag} en el constant pool de {ruta}")
@@ -180,6 +204,16 @@ def leer(ruta: pathlib.Path) -> ClaseLeida:
     nombre_clase = _nombre_de_esta_clase(datos, utf8, contador)
     cadenas = {v for v in utf8.values()}
 
+    miembros_invocados: set[tuple[str, str]] = set()
+    for idx_clase, idx_nombre_y_tipo in referencias_a_miembro:
+        nombre_del_tipo = utf8.get(clase_por_indice.get(idx_clase, -1), "")
+        par = nombre_y_tipo_por_indice.get(idx_nombre_y_tipo)
+        if not nombre_del_tipo or par is None:
+            continue
+        nombre_del_miembro = utf8.get(par[0], "")
+        if nombre_del_miembro:
+            miembros_invocados.add((_normalizar(nombre_del_tipo), nombre_del_miembro))
+
     return ClaseLeida(
         nombre_clase=nombre_clase,
         major=major,
@@ -187,6 +221,7 @@ def leer(ruta: pathlib.Path) -> ClaseLeida:
         cadenas=cadenas,
         metodos=metodos,
         anotaciones_de_clase=anotaciones_de_clase,
+        miembros_invocados=miembros_invocados,
     )
 
 

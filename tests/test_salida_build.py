@@ -401,7 +401,18 @@ def test_el_comando_de_captura_es_EL_MISMO_en_la_SKILL_y_en_el_script():
     # manda al lector para lo fino. El guardian miraba dos sitios y la copia
     # que podia divergir en silencio era la que nadie vigilaba.
     dir_skill = raiz / "skills" / "crear-plugin-appian"
-    fuentes = [dir_skill / "SKILL.md", *sorted((dir_skill / "referencias").glob("*.md"))]
+    # Y un CUARTO ejemplar desde el 20-sep-2026: quien de verdad ejecuta el build
+    # de cada slice es `plugin-compiler-fixer`, asi que es el quien tiene que
+    # dejar el log donde el paso 5 lo busca. Un agente que capture en otro sitio
+    # --o que deje de capturar-- devuelve el hueco que esto vino a cerrar, y no
+    # lo delata ninguna otra puerta: el ejecutor lo descubre en el paso 5, con la
+    # tabla ya en rojo.
+    AGENTE_QUE_CONSTRUYE = raiz / "agents" / "plugin-compiler-fixer.md"
+    fuentes = [
+        dir_skill / "SKILL.md",
+        *sorted((dir_skill / "referencias").glob("*.md")),
+        AGENTE_QUE_CONSTRUYE,
+    ]
 
     # El barrido reconoce el comando por su FORMA --invoca `gradlew` y redirige a
     # algun sitio--, y a proposito NO por el nombre del fichero al que redirige.
@@ -483,6 +494,18 @@ def test_el_comando_de_captura_es_EL_MISMO_en_la_SKILL_y_en_el_script():
     assert any(l == salida_build.COMANDO_DE_CAPTURA_RIGUROSO for _, l in citadas), (
         "la skill dejo de publicar el comando de captura de RIGUROSO: sin el, sus tres puertas "
         "que no forman parte de `build` salen rojas para siempre y nadie sabe con que arreglarlo"
+    )
+    # Y el suelo del agente, por las dos mitades que pueden romperse por separado:
+    # que capture, y que capture la forma ESTANDAR. La de RIGUROSO arrastra
+    # `releaseCheck`, que exige worktree limpio y el agente trabaja sobre un slice
+    # sin commitear: copiarla ahi dejaria el build en rojo por una razon que no
+    # tiene nada que ver con el codigo.
+    del_agente = [l for n, l in citadas if n == AGENTE_QUE_CONSTRUYE.name]
+    assert del_agente == [salida_build.COMANDO_DE_CAPTURA], (
+        f"`{AGENTE_QUE_CONSTRUYE.name}` tiene que publicar exactamente la forma ESTANDAR "
+        f"«{salida_build.COMANDO_DE_CAPTURA}» y publica {del_agente}: quien ejecuta el build de "
+        f"cada slice es el, asi que si el no deja el log en la ruta convenida el paso 5 no lo "
+        f"encuentra; y si copia la de RIGUROSO, `releaseCheck` falla por el worktree sucio"
     )
 
     # Las dos mitades del arreglo, con literales propios.

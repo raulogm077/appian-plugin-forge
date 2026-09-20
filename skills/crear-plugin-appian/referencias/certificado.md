@@ -72,6 +72,13 @@ El `mkdir` no es adorno: el shell abre la redirección **antes** de lanzar Gradl
 proyecto recién andamiado —donde `build/` todavía no existe— el comando sin él falla («No such
 file or directory») y no se construye nada.
 
+⚠️ **Y por vivir dentro de `build/`, este log no sobrevive a un `clean`.** Un `./gradlew clean
+build` —lo más normal del mundo cuando algo huele raro— borra el directorio con la evidencia
+dentro, y el certificado que venga después dirá que la salida no consta y bajará a `NOT_READY`.
+Falla cerrado, que es lo correcto, pero cuesta una pasada entera: si hay que limpiar, se limpia y
+**luego** se captura, nunca las dos cosas en el mismo comando. Lo pagó una de las pruebas E2E del
+20-sep-2026.
+
 **En PowerShell 5.1 ese comando no vale, y no es el único del pipeline que hay que traducir** —ni
 el `&&`, ni los `${CLAUDE_PLUGIN_ROOT}` de las líneas ejecutables que publica la skill, que en
 PowerShell son sintaxis de variable de sesión y se expanden a cadena vacía sin avisar. La

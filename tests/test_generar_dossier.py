@@ -491,3 +491,59 @@ def test_un_certificado_POSTERIOR_A_TODAS_las_fuentes_viaja_SIN_aviso(tmp_path):
         "el dossier marca como rancio un certificado posterior a todas sus fuentes: una "
         "alarma que salta siempre ensena a ignorarla"
     )
+
+
+def test_un_certificado_que_no_es_utf8_da_UNA_FRASE_y_no_un_volcado_de_pila(tmp_path, capsys):
+    """Fallar cerrado esta bien; fallar sin decir nada util, no.
+
+    `verificar_todo.py` escribe el certificado SIEMPRE con `encoding="utf-8"`
+    explicito, asi que uno que no decodifique es uno que reescribio otra cosa
+    --editarlo a mano, o guardarlo desde una herramienta de Windows en cp1252--.
+    El dossier no puede empotrar lo que no sabe leer y hace bien en pararse.
+
+    Lo que no puede es pararse con un `UnicodeDecodeError` crudo: en la tanda
+    E2E del 20-sep-2026 un agente lo vio, lo leyo como una averia de esta
+    herramienta y lo declaro «problema de la herramienta, no mio» en su informe
+    --siendo que el certificado lo habia corrompido el-. El mensaje tiene que
+    decir quien lo escribe y como se arregla.
+    """
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "contrato.md").write_text(
+        (pathlib.Path(__file__).resolve().parent / "fixtures" / "contratos"
+         / "smart-service-minimo.md").read_text(encoding="utf-8"), encoding="utf-8")
+    # El byte exacto del caso real: el `·` de la cabecera guardado en cp1252.
+    (tmp_path / "docs" / "CERTIFICADO.md").write_bytes(
+        "**STATUS: READY_FOR_APPIAN_SUBMISSION**\n\n**SDK:** 26.3 \xb7 release 17\n".encode("cp1252")
+    )
+
+    assert gd.main_con_raiz(tmp_path) == 1, "un certificado ilegible no puede dar salida 0"
+    salida = capsys.readouterr().out
+    assert "UTF-8" in salida, salida
+    assert "paso 5" in salida, "el mensaje no dice como se arregla: volver a generarlo"
+    assert "no se edita" in salida, "el mensaje no dice que el certificado se GENERA"
+
+
+@pytest.mark.parametrize("adornada", [
+    "## VEREDICTO: cumple",
+    "**VEREDICTO: cumple**",
+    "> VEREDICTO: cumple",
+])
+def test_un_VEREDICTO_con_adornos_de_markdown_SIGUE_siendo_un_veredicto(tmp_path, adornada):
+    """El revisor escribe a veces `## VEREDICTO: cumple` en vez de la linea
+    pelada que pide su formato. Exigir el literal hacia que el dossier dijera
+    «sin linea VEREDICTO» sobre una revision que SI tenia veredicto: una
+    revision correcta retratada como ausente, que es peor que no decir nada.
+    """
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "contrato.md").write_text(
+        (pathlib.Path(__file__).resolve().parent / "fixtures" / "contratos"
+         / "function-minimo.md").read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "docs" / "hallazgos-revision.md").write_text(
+        f"# Revision\n\n{adornada}\nHALLAZGOS: ninguno\n", encoding="utf-8")
+
+    assert gd.main_con_raiz(tmp_path) == 0
+    md = (tmp_path / "docs" / "DOSSIER.md").read_text(encoding="utf-8")
+    assert "VEREDICTO: cumple" in md
+    assert "sin linea VEREDICTO" not in md
+    # Y lo que se copia va sin el adorno: nada de un `##` a mitad de linea.
+    assert "## VEREDICTO" not in md

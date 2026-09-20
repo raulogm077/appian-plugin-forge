@@ -546,10 +546,12 @@ prometemos lo que el sistema no comprueba**.
   cuatro capas lo ve. El error solo aparece al integrarlo. Por eso la entrevista es el único sitio
   donde se comprueba que el plug-in hace lo correcto
   (`skills/crear-plugin-appian/referencias/tipos-de-plugin.md`).
-- **Tres reglas de AppMarket son heurísticas declaradas, no infalibles** (`R-A02`, `R-A05`,
-  `R-A06`): combinan una referencia de tipo con una cadena del *constant pool*, y el análisis a
-  nivel de fichero no distingue si vienen de la misma llamada. Sus falsos positivos conocidos están
-  escritos en `assets/reglas-de-validacion.md`.
+- **Dos reglas y media de AppMarket son heurísticas declaradas, no infalibles** (`R-A02`, `R-A06`, y
+  el resto heredado de `R-A05`): combinan una referencia de tipo con una cadena del *constant pool*,
+  y el análisis a nivel de fichero no distingue si vienen de la misma llamada. Sus falsos positivos
+  conocidos están escritos en `assets/reglas-de-validacion.md`. **`R-A05` dejó de serlo el
+  21-sep-2026**: su parte principal compara el par `(tipo, método)` resuelto desde el `Methodref`,
+  que es una sola señal. La misma vía está disponible para las otras dos el día que compense.
 - **`R-A01` no ve el matiz por método.** La regla real es «no `ServiceLocator` en constructores», y
   dentro de `doGet`/`doPost` de un servlet es legítimo: ahí se **delega a la lente de revisión**,
   que es un agente, no un script.

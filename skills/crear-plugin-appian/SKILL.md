@@ -24,6 +24,14 @@ cargado (`--plugin-dir` o instalado), y si se trabaja dentro del repo del forge 
 como plugin, se sustituye por la raíz `appian-plugin-forge/`. Las referencias de este
 directorio se citan enteras la primera vez y como `referencias/<fichero>.md` a partir de ahí.
 
+**Y lo mismo vale para los tres agentes que esta skill lanza**, que es menos evidente porque no
+son rutas: `appian-plugin-forge:<nombre>` solo resuelve como `subagent_type` con el plugin
+cargado. Sin cargarlo, ese nombre no existe y la llamada falla; se lanza entonces un agente
+`general-purpose` pegándole como prompt el cuerpo de la definición del agente —un fichero por
+agente, con su mismo nombre, en el directorio de agentes del forge— seguido del encargo concreto
+que indica el paso. Lo que no se hace es saltarse el agente: su valor es mirar sin memoria de
+esta conversación.
+
 ## When to Use
 
 **Se dispara** en las condiciones que enumera la `description` del frontmatter. La distinción
@@ -141,6 +149,14 @@ referencie el SDK** — que es lo que permite que los tests JUnit corran sin car
 columna de insumo del certificado declara cuántas clases de dominio miró: un andamiaje recién
 generado dice `0 clases de dominio`, que es legítimo y visible, no un aprobado.
 
+**Dos trampas al escribir los tests, las dos descubiertas construyendo de verdad.**
+`SmartServiceException.Builder.build()` **lanza `NullPointerException` fuera del runtime de
+Appian** —resuelve el bundle contra un contexto que en JUnit no existe—, así que el test del
+adaptador que ejercita el camino de error se monta con `mockConstruction`, como hace el plug-in
+de referencia; no es un fallo tuyo ni de la plantilla. Y si el perfil es RIGUROSO, el certificado
+busca clases `*FuzzTest`/`*PropertyTest` **por el nombre**: nombrarlas así al escribirlas cuesta
+cero, y descubrirlo en el paso 5 cuesta otra pasada (el detalle, en `referencias/certificado.md`).
+
 **El andamiaje no crea el repositorio, y el paso 4 lo necesita:** si `<directorio-destino>` no
 está dentro de un repositorio, `git init` ahí antes del primer slice. El paso 4 commitea una vez
 por slice y la cabecera del certificado registra la revisión del fuente que describe; sin
@@ -167,7 +183,19 @@ compilar/corregir de cada slice. Se le lanza sin memoria de esta conversación, 
 prompt lleva lo mínimo que necesita para no adivinar: la ruta absoluta del proyecto generado
 y la tarea del plan que se acaba de implementar —«Compila y corrige
 `<ruta-absoluta-del-proyecto-generado>`. Tarea actual del plan: `<la tarea de docs/plan.md que
-se acaba de escribir>`. Devuelve el informe completo.»—. Para cualquier duda sobre una firma, una clave o un valor
+se acaba de escribir>`. Devuelve el informe completo.»—.
+
+**Si no vuelve pronto, no te quedes esperando: haz tú el trabajo y sigue.** Vale para los tres
+agentes de esta skill. Un ejecutor parado en silencio no está avanzando, y hay relojes de
+inactividad que lo dan por muerto —en la tanda de pruebas del 20-sep-2026 se llevó por delante a
+**3 de 5 ejecutores**, todos esperando a un hijo que sí había terminado su trabajo—. Ejecuta el
+comando por tu cuenta, anota en el informe que lo hiciste, y cuando el informe del agente llegue,
+reconcílialo: llegar tarde no lo invalida, y en dos de aquellas pruebas traía hallazgos reales que
+el ejecutor no había visto. Lo que no vale es darlo por hecho sin que llegue.
+
+**Ese agente deja capturada la salida del
+último build en `build/salida-build.log`**, que es lo que el paso 5 lee: si se construye a mano en
+su lugar, hay que capturarla igual, con el comando que publica ese paso. Para cualquier duda sobre una firma, una clave o un valor
 admitido de la API de Appian, la jerarquía de fuentes es `javap` sobre el JAR del SDK > agente
 `appian-plugin-forge:appian-docs-researcher` > javadoc web (spec §6.3) — la guía
 local (`docs/AI Plugin Generator skill Support Guide.md`, repo de desarrollo; no viaja con el
@@ -246,6 +274,12 @@ antes:
 ```
 mkdir -p build && ./gradlew build releaseCheck --console=plain > build/salida-build.log 2>&1
 ```
+
+**«Worktree limpio» es TODO el árbol, no solo `src/`**, y ahí tropezaron 2 de las 5 pruebas del
+20-sep-2026: uno escribió `docs/decisiones.md` mientras el build corría, y al otro le ensució el
+árbol **el propio `docs/CERTIFICADO.md`** al repetir la puerta —el certificado que la pasada
+anterior acababa de escribir—. Así que antes de lanzarla: commitear todo, `docs/` incluido, y si
+hay que repetirla, commitear también el certificado de la pasada previa.
 
 **El criterio no hay que aplicarlo a mano: el certificado lo publica.** Su cabecera abre con
 `**STATUS: READY_FOR_APPIAN_SUBMISSION**` o `**STATUS: NOT_READY**`, y cuando dice `NOT_READY`

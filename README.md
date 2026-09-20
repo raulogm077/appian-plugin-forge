@@ -169,6 +169,34 @@ viene la *estructura* (patrón de clase, anotaciones, prohibiciones), **no decla
 autor** — es un prompt de sistema sin atribuir. No afecta a la licencia de este repositorio,
 pero antes de publicar el forge conviene saber de quién es.
 
+## Cambios recientes (21-sep-2026)
+
+⚠️ **Si generaste un smart service con una versión anterior a esta, míralo.** La plantilla
+horneaba la clave `error.unexpected` en los dos *bundles* y **no la usaba**: cableaba la frase
+en castellano, así que en un Appian con locale `en_US` el usuario veía español y el
+identificador de correlación no le llegaba. Ya está corregido; en un plug-in ya generado se
+arregla añadiendo `.userMessage("error.unexpected", idCorrelacion)` al `SmartServiceException`.
+
+Lo demás de esta tanda, todo en el sentido de «que la puerta no se pueda apagar sin que se note»:
+
+- **`R-A05`** deja de ser heurística y cubre el *«or any other method»* de la política de Appian:
+  además de `System.setProperty`, vigila `Locale.setDefault`, `TimeZone.setDefault`,
+  `Security.setProperty`, `System.setProperties` y `clearProperty`. Antes, una clase que solo
+  llamara a los dos `setDefault` —que cambian la JVM para **todos** los plug-ins del servidor—
+  pasaba las diez reglas de AppMarket con cero hallazgos.
+- **`R-F14`** vigila ahora **toda** exclusión activa de `config/spotbugs/exclude.xml`, en los
+  cuatro tipos de plug-in y una a una, y marca aparte un `<Match>` sin `<Bug>`, que no excluye un
+  patrón sino que apaga SpotBugs entero. Excluir sigue siendo legítimo; hacerlo sin escribir el
+  porqué en `docs/decisiones.md`, no.
+- La lente de revisión lleva escritas tres exigencias que ningún script puede comprobar: cerrar
+  los `Closeable` **siempre**, de quién es el contexto en un servlet, y no exportar datos ni
+  saltarse la seguridad de la plataforma.
+- El dossier ya no da por ausente un veredicto escrito como `## VEREDICTO: cumple`.
+
+El cotejo completo de las políticas de Appian Cloud contra lo que este forge garantiza —con lo
+que queda fuera— vive en el repositorio de desarrollo, en
+`docs/auditoria-politicas-appmarket-vs-forge.md`.
+
 ## Mantenimiento
 
 El forge se valida por hitos con el **gate de ciclo** (`/validar-ciclo`):

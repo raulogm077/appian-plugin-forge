@@ -5,6 +5,8 @@ de lo que la entrevista ya recogio.
 """
 
 import pathlib
+import re
+import xml.etree.ElementTree as ET
 
 import contrato
 
@@ -24,6 +26,79 @@ INVOCACION_POR_TIPO = {
         "`appian-plugin.xml`."
     ),
 }
+
+
+# Los metodos que un `HttpServlet` puede atender. Se busca la DECLARACION
+# (`void doGet(`) y no la mencion: una llamada a `super.doPost(...)` no hace que
+# el servlet atienda POST, y anunciarlo seria peor que no decir nada.
+DECLARACION_DE_METODO = re.compile(
+    r"void\s+do(Get|Post|Put|Delete|Head|Options|Patch)\s*\(", re.MULTILINE
+)
+
+
+def _ruta_declarada(raiz: pathlib.Path) -> str | None:
+    """El `<url-pattern>` del manifiesto GENERADO, que es el hecho.
+
+    Se lee del fichero y no se re-deriva del contrato a proposito: `andamiar.py`
+    lo saca de `[servlet].url_pattern` con un relleno por defecto cuando falta,
+    y quien implementa el servlet puede haberlo cambiado despues. Re-derivarlo
+    abriria una segunda costura que diria algo distinto del XML que se entrega.
+    """
+    manifiesto = raiz / "src" / "main" / "resources" / "appian-plugin.xml"
+    if not manifiesto.is_file():
+        return None
+    try:
+        arbol = ET.fromstring(manifiesto.read_text(encoding="utf-8"))
+    except ET.ParseError:
+        return None
+    for elemento in arbol.iter("url-pattern"):
+        if elemento.text and elemento.text.strip():
+            return elemento.text.strip()
+    return None
+
+
+def _metodos_atendidos(raiz: pathlib.Path, datos: dict) -> list:
+    """Los `doXxx` que la clase del servlet declara, en orden de aparicion."""
+    plugin = contrato.seccion(datos, "plugin")
+    nombre_clase = contrato.seccion(datos, "clase").get("nombre", "")
+    paquete = plugin.get("paquete", "")
+    if not nombre_clase or not paquete:
+        return []
+    fuente = (
+        raiz / "src" / "main" / "java"
+        / pathlib.Path(*paquete.split("."))
+        / "servlet"
+        / f"{nombre_clase}.java"
+    )
+    if not fuente.is_file():
+        return []
+    vistos = []
+    for verbo in DECLARACION_DE_METODO.findall(fuente.read_text(encoding="utf-8")):
+        metodo = verbo.upper()
+        if metodo not in vistos:
+            vistos.append(metodo)
+    return vistos
+
+
+def _invocacion_servlet(raiz, datos: dict) -> str | None:
+    """La frase del servlet con ruta y metodos, o None si no consta ninguna.
+
+    Sin proyecto en disco --o sin manifiesto-- devuelve None y la frase generica
+    se queda: decir «ruta `/algo`» sin haberla leido seria inventarsela.
+    """
+    if raiz is None:
+        return None
+    ruta = _ruta_declarada(pathlib.Path(raiz))
+    if not ruta:
+        return None
+    frase = (
+        f"Expone un endpoint HTTP dentro de Appian, en la ruta `{ruta}` que declara "
+        f"`appian-plugin.xml`."
+    )
+    metodos = _metodos_atendidos(pathlib.Path(raiz), datos)
+    if metodos:
+        frase += " Metodos HTTP atendidos: " + ", ".join(f"`{m}`" for m in metodos) + "."
+    return frase
 
 
 def _parametros(datos: dict) -> str:
@@ -67,7 +142,7 @@ NOTAS_DE_CAPACIDAD = (
 )
 
 
-def render_guia_integracion(datos: dict) -> str:
+def render_guia_integracion(datos: dict, raiz=None) -> str:
     plugin = contrato.seccion(datos, "plugin")
     clase = contrato.seccion(datos, "clase")
     capacidades = contrato.seccion(datos, "capacidades")
@@ -76,6 +151,11 @@ def render_guia_integracion(datos: dict) -> str:
     invocacion = INVOCACION_POR_TIPO.get(tipo, "Tipo de plugin no reconocido.").format(
         key=contrato.nombre_funcion(datos), params=_parametros(datos), paleta=clase.get("paleta", "")
     )
+    # El servlet es el unico tipo cuya invocacion no se deduce entera del
+    # contrato: su ruta vive en el manifiesto. Con el proyecto delante se dice;
+    # sin el, se mantiene la frase generica, que es menos util pero cierta.
+    if tipo == "servlet":
+        invocacion = _invocacion_servlet(raiz, datos) or invocacion
 
     lineas = [
         f"# Guia de integracion — {plugin.get('nombre', '')}",
@@ -145,7 +225,7 @@ def render_ficha_appmarket(datos: dict) -> str:
 def main_con_raiz(raiz: pathlib.Path) -> int:
     datos = contrato.cargar(raiz / "docs" / "contrato.md")
     (raiz / "docs" / "GUIA_INTEGRACION.md").write_text(
-        render_guia_integracion(datos), encoding="utf-8"
+        render_guia_integracion(datos, raiz=raiz), encoding="utf-8"
     )
     (raiz / "docs" / "FICHA_APPMARKET.md").write_text(
         render_ficha_appmarket(datos), encoding="utf-8"

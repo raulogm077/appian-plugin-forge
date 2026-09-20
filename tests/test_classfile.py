@@ -97,3 +97,40 @@ def test_long_y_double_ocupan_dos_slots(clase_compilada):
     leida = classfile.leer(clase_compilada)
     assert leida.nombre_clase == "ejemplo.Ejemplo"
     assert leida.metodos
+
+
+@pytest.fixture(scope="module")
+def clase_que_altera_la_jvm(tmp_path_factory):
+    if shutil.which("javac") is None:
+        pytest.skip("javac no esta en el PATH")
+    destino = tmp_path_factory.mktemp("clases-jvm")
+    subprocess.run(
+        ["javac", "--release", "17", "-d", str(destino), str(FIXTURES / "AlteraLaJvm.java")],
+        check=True,
+        capture_output=True,
+    )
+    return destino / "ejemplo" / "AlteraLaJvm.class"
+
+
+def test_resuelve_el_par_tipo_metodo_de_cada_invocacion(clase_que_altera_la_jvm):
+    """El enlace `Methodref -> (clase, metodo)` existe en el pool y antes se
+    tiraba: `tipos_referenciados` y `cadenas` quedaban como dos conjuntos
+    sueltos, y una regla que los cruzara no podia saber si las dos senales
+    venian de la MISMA llamada. Con el par resuelto, si.
+    """
+    leida = classfile.leer(clase_que_altera_la_jvm)
+    assert ("java.util.Locale", "setDefault") in leida.miembros_invocados
+    assert ("java.util.TimeZone", "setDefault") in leida.miembros_invocados
+
+
+def test_el_par_resuelto_no_mezcla_tipos_con_metodos_ajenos(clase_que_altera_la_jvm):
+    """Suelo antivacuidad del test de arriba: que el par sea EXACTO significa
+    que no aparece ninguna combinacion que la clase no hace. `Locale` no
+    declara `getTimeZone` y `TimeZone` no declara `getDefault` aqui; si el
+    lector emparejara por producto cartesiano en vez de por el enlace real,
+    estas dos apareceran igual y el test de arriba pasaria por casualidad.
+    """
+    leida = classfile.leer(clase_que_altera_la_jvm)
+    assert ("java.util.Locale", "getTimeZone") not in leida.miembros_invocados
+    assert ("java.util.TimeZone", "setDefault") in leida.miembros_invocados
+    assert ("java.util.Locale", "setDefault") in leida.miembros_invocados

@@ -363,11 +363,62 @@ def test_activar_SECSP_habiendolo_decidido_por_escrito_si_pasa():
     assert hallazgos == []
 
 
-def test_la_regla_de_SECSP_solo_aplica_a_servlets():
+def test_TODA_exclusion_activa_hay_que_firmarla_sea_del_tipo_que_sea():
+    """Este test decia antes lo contrario --«la regla solo aplica a
+    servlets»-- y era justo el agujero: en cualquier otro tipo el
+    `exclude.xml` ni se parseaba, asi que una exclusion añadida a mano en una
+    function no la veia NADIE. El andamiaje solo deja la de SECSP comentada en
+    servlets, pero el fichero existe en los cuatro tipos.
+    """
     hallazgos = vf.comprobar_guardarrailes(
         "smart-service", GRADLE_SANO, EXCLUDE_CON_SECSP_ACTIVO, ""
     )
-    assert hallazgos == []
+    assert [h.regla for h in hallazgos] == ["R-F14"]
+
+
+def test_una_exclusion_QUE_NO_ES_LA_DEL_ANDAMIAJE_tampoco_pasa_gratis():
+    """El caso real: el 20-sep un ejecutor añadio `THROWS` sobre una clase de
+    dominio. Lo documento por su cuenta, asi que no hubo fallo — pero ninguna
+    capa lo habria visto, porque la regla solo miraba SECSP/SERVLET_PARAMETER.
+    """
+    excluye_throws = EXCLUDE_CON_SECSP_ACTIVO.replace("SECSP", "THROWS")
+    hallazgos = vf.comprobar_guardarrailes("function", GRADLE_SANO, excluye_throws, "")
+    assert [h.regla for h in hallazgos] == ["R-F14"]
+    assert "THROWS" in hallazgos[0].mensaje
+
+    decidido = "# Decisiones\n\nD3: se excluye THROWS en el calculador: ...\n"
+    assert vf.comprobar_guardarrailes("function", GRADLE_SANO, excluye_throws, decidido) == []
+
+
+def test_firmar_UNA_exclusion_no_absuelve_a_las_DEMAS():
+    """Suelo antivacuidad de la regla: antes bastaba con que `decisiones.md`
+    mencionara cualquiera de las activas para que pasaran todas.
+    """
+    dos = EXCLUDE_CON_SECSP_ACTIVO.replace(
+        '<Bug pattern="SECSP"/>', '<Bug pattern="SECSP"/><Bug pattern="THROWS"/>'
+    )
+    decisiones = "# Decisiones\n\nD2: se excluye SECSP porque el valor va firmado con HMAC.\n"
+    hallazgos = vf.comprobar_guardarrailes("servlet", GRADLE_SANO, dos, decisiones)
+    assert [h.regla for h in hallazgos] == ["R-F14"]
+    assert "THROWS" in hallazgos[0].mensaje
+    assert "SECSP" not in hallazgos[0].mensaje, "SECSP si estaba firmada: no debe reprocharse"
+
+
+def test_un_Match_SIN_Bug_apaga_spotbugs_entero_y_se_dice():
+    """El caso peor y el mas invisible: no excluye un patron, los silencia
+    todos para lo que case. No tiene patron que nombrar, asi que el barrido de
+    patrones no puede verlo ni aunque quisiera.
+    """
+    mudo = """<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <Match>
+    <Class name="com.raul.appian.ejemplo.dominio.Calculador"/>
+  </Match>
+</FindBugsFilter>
+"""
+    hallazgos = vf.comprobar_guardarrailes("function", GRADLE_SANO, mudo, "")
+    assert [h.regla for h in hallazgos] == ["R-F14"]
+    assert "<Match>" in hallazgos[0].mensaje
 
 
 def test_un_exclude_xml_roto_se_dice_en_vez_de_tragarse():

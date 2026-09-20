@@ -124,7 +124,24 @@ def comprobar_guardarrailes(tipo: str, gradle: str, exclusiones: str,
                          f"el codigo. Si un patron concreto sobra, se excluye ESE patron en "
                          f"config/spotbugs/exclude.xml con su motivo al lado")
             )
-    if tipo != "servlet" or not exclusiones.strip():
+    # Antes esto era `if tipo != "servlet" or not exclusiones.strip()`, y el
+    # `tipo != "servlet"` era el agujero: en cualquier otro tipo el
+    # `exclude.xml` NI SE PARSEABA, asi que una exclusion añadida a mano en una
+    # function pasaba sin que ninguna capa la viera. El andamiaje solo deja
+    # comentada la de SECSP en servlets, pero el fichero existe en los cuatro.
+    #
+    # Un `exclude.xml` vacio o ausente NO es una via de escape, y no se supone:
+    # medido el 21-sep-2026 sobre un proyecto real.
+    #   - AUSENTE: `build.gradle` lo declara en `excludeFilter = file(...)`, y
+    #     Gradle falla en alto («Make sure the file exists before the task is
+    #     called»). No hay build que certificar.
+    #   - VACIO: SpotBugs dice «Unable to read filter ... Premature end of file»
+    #     pero SIGUE analizando, y con un fallo de verdad delante el build FALLA.
+    #     Un filtro que no carga es un filtro que no excluye nada: mas estricto,
+    #     no menos.
+    # Por eso este retorno temprano puede quedarse: al reves que el
+    # `tipo != "servlet"` de arriba, no deja pasar nada.
+    if not exclusiones.strip():
         return hallazgos
     try:
         # Los `<Match>` COMENTADOS no sobreviven al parseo, que es justo lo que
@@ -137,18 +154,45 @@ def comprobar_guardarrailes(tipo: str, gradle: str, exclusiones: str,
                      f"aplicaria ninguna exclusion y nadie lo diria")
         )
         return hallazgos
-    activos = {
-        bug.get("pattern", "")
-        for bug in raiz.iter("Bug")
-    } & PATRONES_ABIERTOS_EN_SERVLET
-    if activos and not any(p in decisiones for p in activos):
+    # TODA exclusion activa, no solo las dos del andamiaje de servlet. El 20-sep
+    # un ejecutor añadio una segunda (`THROWS`, sobre una clase de dominio) que
+    # ninguna capa habria visto: la documento por su cuenta y por eso no hubo
+    # fallo, pero el hueco era real. Y se comprueba UNA A UNA: antes bastaba con
+    # que se mencionara cualquiera para que pasaran todas.
+    activos = set()
+    for bug in raiz.iter("Bug"):
+        # SpotBugs admite `pattern="A,B"` en un solo elemento.
+        activos |= {p.strip() for p in bug.get("pattern", "").split(",") if p.strip()}
+    sin_justificar = sorted(p for p in activos if p not in decisiones)
+    if sin_justificar:
+        # Los dos del andamiaje llevan ademas su porque concreto: es el caso
+        # frecuente y quien lo lee suele estar a mitad de implementar.
+        del_andamiaje = sorted(set(sin_justificar) & PATRONES_ABIERTOS_EN_SERVLET)
+        coletilla = (
+            f" {', '.join(del_andamiaje)} viene COMENTADO del andamiaje a proposito: solo "
+            f"quien escribio `ejecutar()` sabe si el valor se trata con seguridad."
+            if del_andamiaje else ""
+        )
         hallazgos.append(
             Hallazgo("R-F14", "error",
-                     f"exclude.xml activa {', '.join(sorted(activos))} y docs/decisiones.md no "
-                     f"lo menciona. El andamiaje la deja comentada a proposito: solo quien "
-                     f"escribio `ejecutar()` sabe si el valor se trata con seguridad. Si ya lo "
+                     f"exclude.xml activa {', '.join(sin_justificar)} y docs/decisiones.md no "
+                     f"lo menciona. Excluir un patron es legitimo; hacerlo en SILENCIO no: es la "
+                     f"forma barata de apagar la puerta sin tocar el codigo.{coletilla} Si ya lo "
                      f"decidiste, escribe la decision --es la pieza 2 del dossier--; si aun no, "
-                     f"vuelve a comentarla y deja la puerta en rojo, que es la verdad")
+                     f"vuelve a comentar la exclusion y deja la puerta en rojo, que es la verdad")
+        )
+
+    # El caso peor y el mas invisible: un `<Match>` SIN ningun `<Bug>` dentro no
+    # excluye un patron, los silencia TODOS para lo que case (una clase, un
+    # paquete entero). No tiene patron que nombrar, asi que el bucle de arriba
+    # no lo ve ni aunque quisiera.
+    mudos = [m for m in raiz.iter("Match") if not list(m.iter("Bug"))]
+    if mudos:
+        hallazgos.append(
+            Hallazgo("R-F14", "error",
+                     f"exclude.xml tiene {len(mudos)} bloque(s) <Match> sin ningun <Bug>: eso no "
+                     f"excluye un patron, apaga SpotBugs ENTERO para lo que case. Acota la "
+                     f"exclusion a un patron concreto, con su motivo al lado")
         )
     return hallazgos
 

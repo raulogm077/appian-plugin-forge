@@ -24,6 +24,8 @@ import os
 import pathlib
 import subprocess
 
+import pytest
+
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
 RAIZ_REPO = RAIZ.parent
 PREFIJO_PLUGIN = "appian-plugin-forge/"
@@ -123,6 +125,39 @@ def _repo_aislado(tmp_path):
     return aislado
 
 
+def _exigir_repo_padre(tmp_path):
+    """Salta el test si esto es un checkout suelto del plugin, y solo entonces.
+
+    El plugin viaja solo --la comunidad lo clona desde su propio repositorio-- y
+    alli el repo padre no existe: el guardian que compara las dos listas de
+    reglas no puede correr, y dejarlo fallar le da a quien clona dos rojos que no
+    son suyos en el primer `pytest`.
+
+    El discriminador es a que repositorio pertenece el directorio del plugin, no
+    si hay un `.gitignore` un nivel mas arriba: clonar dentro de una carpeta que
+    por casualidad tenga uno compararia contra basura y fallaria igual. Y una
+    tercera respuesta --sin git, o un tercer montaje-- NO salta: se deja fallar,
+    porque un `skip` que se dispara donde no debe borra el guardian sin que nadie
+    se entere, que es justo lo que este repositorio persigue en todas sus formas.
+    """
+    proceso = _git(["rev-parse", "--show-toplevel"], cwd=RAIZ, tmp_path=tmp_path)
+    assert proceso.returncode == 0, (
+        f"`{RAIZ}` no esta dentro de ningun repositorio git, asi que no se puede saber si "
+        f"falta el repo padre o falta git: {proceso.stderr}"
+    )
+    toplevel = pathlib.Path(proceso.stdout.strip()).resolve()
+    if toplevel == RAIZ:
+        pytest.skip(
+            "suite ejecutada fuera del repo de desarrollo del forge: este guardian compara el "
+            "`.gitignore` de aqui con el del repo padre, que en un clon suelto del plugin no "
+            "existe. Corre donde las dos listas pueden divergir, que es el repo de desarrollo"
+        )
+    assert toplevel == RAIZ_REPO, (
+        f"montaje desconocido: `{RAIZ}` pertenece al repositorio `{toplevel}`, que no es ni el "
+        f"propio plugin ni el repo padre `{RAIZ_REPO}`"
+    )
+
+
 def _ignorados(repo, tmp_path, rutas):
     """Cuales de `rutas` ignoraria `repo`.
 
@@ -181,7 +216,7 @@ def _rebasar(regla):
     return None
 
 
-def test_el_gitignore_del_plugin_replica_las_reglas_del_repo_padre():
+def test_el_gitignore_del_plugin_replica_las_reglas_del_repo_padre(tmp_path):
     """Dos listas de reglas que no se atan divergen; esta se ata por derivacion.
 
     El fichero del plugin no es una copia a mano: es lo que sale de rebasar el
@@ -191,6 +226,7 @@ def test_el_gitignore_del_plugin_replica_las_reglas_del_repo_padre():
     Se compara la SECUENCIA, no el conjunto: en git el orden decide, una
     excepcion solo vale despues del patron que excepciona.
     """
+    _exigir_repo_padre(tmp_path)
     assert GITIGNORE_PLUGIN.is_file(), (
         "el plugin no trae `.gitignore` propio; sin el, un checkout aislado de "
         "appian-plugin-forge/ no ignora ni build/ ni los __pycache__/"
@@ -224,13 +260,15 @@ def test_un_checkout_aislado_del_plugin_no_ignora_nada_versionado(tmp_path):
     barrido no se queda en esos tres: pasa TODO lo que git tiene rastreado bajo
     el plugin y exige que no salga ninguno.
     """
-    listado = _git(["ls-files", "--", str(RAIZ)], cwd=RAIZ_REPO, tmp_path=tmp_path)
+    # `cwd` en el propio plugin y sin prefijo que recortar: git imprime las rutas
+    # relativas al directorio desde el que se le llama, asi que esta lista sale
+    # igual en el repo de desarrollo y en un clon suelto del plugin. Y ahi es
+    # justo donde este guardian tiene que seguir corriendo --es el unico de los
+    # dos que no necesita al padre--, porque un clon suelto es el escenario que
+    # mide: el `.gitignore` de aqui decidiendo solo.
+    listado = _git(["ls-files"], cwd=RAIZ, tmp_path=tmp_path)
     assert listado.returncode == 0, listado.stderr
-    rastreados = [
-        linea[len(PREFIJO_PLUGIN):]
-        for linea in listado.stdout.splitlines()
-        if linea.startswith(PREFIJO_PLUGIN)
-    ]
+    rastreados = [linea for linea in listado.stdout.splitlines() if linea]
     for en_riesgo in RASTREADOS_EN_RIESGO:
         assert en_riesgo in rastreados, (
             f"`{en_riesgo}` ya no esta versionado: el barrido de abajo se quedaria "

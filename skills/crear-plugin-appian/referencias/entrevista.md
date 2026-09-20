@@ -98,12 +98,21 @@ un espacio o una palabra reservada se rechazan en el acto y no dentro de `./grad
 
 El que más cara cuesta olvidar, porque no es una decisión de diseño sino un identificador:
 
-**`[bundle] nombre`** — la clave del módulo. Alimenta dos cosas a la vez: el atributo `key` de
-`<smart-service>`/`<function>` en el manifiesto y el nombre base del `.properties`. El plug-in
-publicado en el AppMarket declara `key="readEmailFile"` y su bundle es
+**`[bundle] nombre`** — la clave del módulo. Alimenta **siempre** el nombre base del
+`.properties`, y en **`smart-service`** además el atributo `key` de `<smart-service>` en el
+manifiesto. El plug-in publicado en el AppMarket declara `key="readEmailFile"` y su bundle es
 `readEmailFile_en_US.properties`: mismo nombre, y por eso es un solo campo. Se pide a los tres
 tipos que cargan bundle —`function`, `writer-function`, `smart-service`—; el `servlet` no lo
 lleva, su clave de módulo sale del nombre del artefacto.
+
+⚠️ **En `function` y `writer-function` esa segunda mitad no se cumple, y conviene saberlo antes
+de extrañarse:** el `key` de `<function>` sale de `[funcion] nombre` —y si esa sección no está,
+del nombre de la clase en minúsculas (`contrato.nombre_funcion`)—, no del bundle. Así que el
+fichero puede acabar llamándose `registrarAuditoria_en_US.properties` mientras la función se
+invoca como `registrarauditoriafunction(...)`. Ninguna capa lo marca porque ninguna de las dos
+cosas está mal por separado; si se quieren iguales, se declara `[funcion] nombre` con el mismo
+valor. Lo cazó un agente en la tanda E2E del 20-sep-2026, contra esta misma referencia, que
+hasta entonces prometía lo contrario para los tres tipos.
 
 Sin él salía `key=""` y un fichero llamado `_en_US.properties`, y ninguna de las cuatro capas
 lo veía: el validador de bundles derivaba la ruta esperada del **mismo dato vacío** que había
@@ -131,9 +140,15 @@ que el perfil no se pregunta por separado: se deduce y se propone.
 | ¿Parsea formatos que no controlamos? | el espacio de entradas es ajeno | **RIGUROSO** |
 | ¿Sale a la red? | timeouts, topes y política de reintentos | **RIGUROSO** |
 | ¿Toca credenciales? | Secure Credentials Store, obligatorio | **RIGUROSO** |
-| ¿Maneja datos personales? | nada de datos en logs; correlación por identificador | **RIGUROSO** |
+| ¿Maneja datos personales? | nada de datos en **logs**; correlación por identificador | **RIGUROSO** |
 | ¿Usa librerías de terceros? | mirar licencia; copyleft es rechazo automático | — |
 | ¿Toca ficheros? | `ContentService`; prohibido el sistema de ficheros | — |
+
+⚠️ **«Nada de datos en logs» no es «nada de datos personales».** Si el contrato del plug-in *es*
+escribir quién hizo qué —una traza de auditoría, por ejemplo—, ese dato va a su destino declarado y
+eso no incumple nada: lo que la fila prohíbe es que además acabe en el **log de la plataforma**, que
+es un sitio que el contrato no nombra y que ve mucha más gente. La regla es sobre el canal, no sobre
+el dato.
 
 **Las cuatro marcadas se escriben en el contrato**, y no como prosa: son el bloque
 `[capacidades]`, con una clave booleana por cada pregunta marcada, aquí en el orden de la

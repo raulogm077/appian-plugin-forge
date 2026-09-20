@@ -1,13 +1,23 @@
 import pathlib
 
+import andamiar
 import contrato as c
 import generar_documentacion_usuario as gdu
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures" / "contratos"
+PLANTILLAS = pathlib.Path(__file__).resolve().parents[1] / "assets" / "plantillas"
+SERVLET = "servlet-minimo.md"
 
 
 def _cargar(nombre: str) -> dict:
     return c.cargar(FIXTURES / nombre)
+
+
+def _proyecto_servlet(tmp_path):
+    """Un servlet andamiado de verdad: manifiesto y clase reales en disco."""
+    datos = _cargar(SERVLET)
+    andamiar.generar(datos, PLANTILLAS, tmp_path, FIXTURES / SERVLET)
+    return datos
 
 
 def test_guia_de_function_incluye_la_llamada_sail_con_la_key():
@@ -24,6 +34,48 @@ def test_guia_de_servlet_no_promete_expresion_sail():
     md = gdu.render_guia_integracion(_cargar("servlet-minimo.md"))
     assert "endpoint" in md.lower()
     assert "expresion sail" not in md.lower() and "expresión sail" not in md.lower()
+
+
+def test_guia_de_servlet_cita_la_ruta_y_los_metodos_del_proyecto_generado(tmp_path):
+    """«Segun lo declarado en appian-plugin.xml» obliga a abrir el manifiesto.
+
+    Era el unico de los cuatro tipos cuya guia no decia como se invoca: cumplia
+    el criterio de «contenido no vacio» y remitia a otro fichero. Con el proyecto
+    delante los dos datos que faltaban son hechos leidos, no deducciones.
+    """
+    datos = _proyecto_servlet(tmp_path)
+    md = gdu.render_guia_integracion(datos, raiz=tmp_path)
+    assert "`/estado`" in md, md
+    assert "`GET`" in md, md
+
+
+def test_la_ruta_del_servlet_sale_del_MANIFIESTO_y_no_del_contrato(tmp_path):
+    """El discriminador entre leer el hecho y re-derivarlo.
+
+    `andamiar.py` saca el `url-pattern` de `[servlet].url_pattern` con relleno
+    por defecto cuando falta --que es el caso de este contrato--, asi que
+    re-derivarlo daria el mismo `/estado` y los dos tests de arriba pasarian
+    igual. Quien implementa el servlet puede cambiarlo en el XML, y entonces la
+    guia tiene que decir lo que se entrega, no lo que el contrato sugeria.
+    """
+    datos = _proyecto_servlet(tmp_path)
+    manifiesto = tmp_path / "src" / "main" / "resources" / "appian-plugin.xml"
+    manifiesto.write_text(
+        manifiesto.read_text(encoding="utf-8").replace(
+            "<url-pattern>/estado</url-pattern>", "<url-pattern>/otra-ruta</url-pattern>"
+        ),
+        encoding="utf-8",
+    )
+    md = gdu.render_guia_integracion(datos, raiz=tmp_path)
+    assert "`/otra-ruta`" in md, md
+    assert "/estado" not in md, "la guia re-derivo la ruta del contrato en vez de leer el XML"
+
+
+def test_guia_de_servlet_sin_proyecto_delante_no_se_inventa_la_ruta():
+    """Sin manifiesto que leer, la frase generica; nunca una ruta supuesta."""
+    md = gdu.render_guia_integracion(_cargar(SERVLET))
+    assert "appian-plugin.xml" in md
+    assert "/estado" not in md, "se invento la ruta sin haber abierto el manifiesto"
 
 
 def test_guia_de_writer_function_menciona_saveInto():

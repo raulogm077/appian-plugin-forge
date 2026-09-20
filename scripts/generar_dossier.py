@@ -211,6 +211,13 @@ def main() -> int:
     return main_con_raiz(pathlib.Path(sys.argv[1]))
 
 
+def _sin_adornos(linea: str) -> str:
+    """Quita los adornos de markdown con los que un agente puede envolver una
+    linea que su formato pide pelada: `## X`, `**X**`, `> X`, `- X`.
+    """
+    return linea.strip().strip("*_ ").lstrip("#>-").strip()
+
+
 def _leer_si_existe(ruta) -> str | None:
     """None si el fichero no esta. No se resuelve a favor: «no consta» y
     «existe y esta vacio» son afirmaciones distintas, igual que con el
@@ -234,7 +241,25 @@ def main_con_raiz(raiz) -> int:
     certificado_md = ""
     ruta_cert = raiz / "docs" / "CERTIFICADO.md"
     if ruta_cert.is_file():
-        certificado_md = ruta_cert.read_text(encoding="utf-8")
+        try:
+            certificado_md = ruta_cert.read_text(encoding="utf-8")
+        except UnicodeDecodeError as e:
+            # `verificar_todo.py` lo escribe SIEMPRE en UTF-8 explicito, asi que
+            # si no decodifica es que lo reescribio otra cosa: una herramienta de
+            # Windows que guardo en cp1252, o alguien editando a mano un fichero
+            # que se genera. Fallar cerrado esta bien --el dossier no puede
+            # empotrar lo que no sabe leer--; fallar con un volcado de pila, no:
+            # en la tanda E2E del 20-sep-2026 un agente leyo el traceback como
+            # una averia de esta herramienta y lo dio por un problema ajeno.
+            print(
+                f"ERROR: `{ruta_cert}` no esta en UTF-8 ({e}).\n"
+                f"       El paso 5 lo escribe siempre en UTF-8, asi que alguien lo ha reescrito "
+                f"fuera de `verificar_todo.py` --editarlo a mano o guardarlo desde una "
+                f"herramienta de Windows en cp1252--.\n"
+                f"       El certificado se GENERA, no se edita: volver a ejecutar el paso 5 "
+                f"sobre este proyecto lo deja bien y este dossier vuelve a salir."
+            )
+            return 1
         # Un certificado que FALTA ya se declaraba («_pendiente de ejecutar la
         # verificacion_»); uno RANCIO pasaba en silencio, y es el caso que el
         # propio Proceso fabrica: el paso 6 manda corregir el codigo y el 7
@@ -262,8 +287,16 @@ def main_con_raiz(raiz) -> int:
         # describe el paso 6 de SKILL.md- deja varias lineas VEREDICTO en el
         # fichero, y el dossier tiene que describir el estado actual, no el
         # de la primera pasada.
+        # Y se quitan antes los adornos de markdown: el agente revisor escribe a
+        # veces `## VEREDICTO: cumple` o `**VEREDICTO: cumple**` en vez de la
+        # linea pelada que pide su formato de salida. Exigir el literal hacia
+        # que el dossier dijera «sin linea VEREDICTO» sobre una revision que SI
+        # habia veredicto -- una revision correcta que el dossier retrataba como
+        # ausente. Se normaliza tambien lo que se copia, para que el dossier no
+        # arrastre un `##` a mitad de linea.
         veredicto = next(
-            (l.strip() for l in reversed(hallazgos.splitlines()) if l.strip().startswith("VEREDICTO")),
+            (v for v in (_sin_adornos(l) for l in reversed(hallazgos.splitlines()))
+             if v.startswith("VEREDICTO")),
             "sin linea VEREDICTO",
         )
         revision = f"`{ARCHIVO_REVISION}` — {veredicto}"

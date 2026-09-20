@@ -51,8 +51,19 @@ public class {{CLASE}} extends AppianSmartService {
             String idCorrelacion = java.util.UUID.randomUUID().toString();
             LOG.error("Error en {{CLASE}} [" + idCorrelacion + "]", e);
             errorOccurred = Boolean.TRUE;
-            errorMessage = "Se produjo un error. Identificador de correlacion: " + idCorrelacion;
-            throw new SmartServiceException.Builder(getClass(), e).build();
+            // Las DOS cosas, como el plug-in de referencia ya aprobado
+            // (`ReadEmailFileSmartService:124-128`): la salida publica lleva su
+            // frase, y el mensaje que Appian ensena sale del BUNDLE via
+            // `userMessage`, donde la clave `error.unexpected` ya trae su hueco
+            // {0} para el identificador. Antes faltaba la segunda mitad: la
+            // clave estaba muerta y el id no llegaba al usuario. Y la frase va
+            // en INGLES, como la de la referencia, porque el bundle por defecto
+            // es `_en_US`; cablearla en castellano la ensenaba en espanol a
+            // todo el mundo, que es justo lo que el bundle existe para evitar.
+            errorMessage = "An unexpected error occurred. Reference: " + idCorrelacion + ".";
+            throw new SmartServiceException.Builder(getClass(), e)
+                    .userMessage("error.unexpected", idCorrelacion)
+                    .build();
         }
     }
 

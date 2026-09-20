@@ -31,6 +31,28 @@ TIPOS_SISTEMA_DE_FICHEROS = (
 PREFIJOS_RED = ("java.net.", "javax.net.", "java.nio.channels.Socket")
 TIPOS_RED_INOFENSIVOS = frozenset({"java.net.URLEncoder", "java.net.URLDecoder"})
 
+# R-A05 · la politica dice «System.setProperty() OR ANY OTHER METHOD», y la
+# heuristica de abajo solo veia la primera mitad. Medido el 21-sep-2026: una
+# clase con `Locale.setDefault` y `TimeZone.setDefault` —que cambian la JVM para
+# TODOS los plug-ins del servidor— pasaba las diez reglas R-A con 0 hallazgos,
+# porque no referencia `java.lang.System` y esa es media heuristica.
+#
+# Estos pares son EXACTOS, no heuristicos: salen de resolver el `Methodref`
+# contra su clase, asi que «este tipo, este metodo» es una sola senal y no dos
+# sueltas. Misma fiabilidad que R-A10, y por eso la lista puede crecer sin
+# empeorar la tasa de falsos positivos.
+#
+# `System.setOut`/`setErr` NO estan aqui a proposito: son de R-A02, y duplicar
+# un hallazgo en dos reglas confunde a quien lo arregla.
+MIEMBROS_QUE_ALTERAN_LA_JVM = (
+    ("java.lang.System", "setProperty"),
+    ("java.lang.System", "setProperties"),
+    ("java.lang.System", "clearProperty"),
+    ("java.util.Locale", "setDefault"),
+    ("java.util.TimeZone", "setDefault"),
+    ("java.security.Security", "setProperty"),
+)
+
 PATRON_SECRETO = re.compile(
     r"(?i)(password|passwd|api[_-]?key|client[_-]?secret|token)\s*[:=]\s*\S{8,}"
 )
@@ -114,8 +136,24 @@ def comprobar(clases: list, tipo_plugin: str, capacidades: dict) -> list[Hallazg
                              f"usar ContentService y Document")
                 )
 
-        # R-A05 · alterar configuracion global de la JVM.
-        if "java.lang.System" in tipos and any("setProperty" in s for s in cadenas):
+        # R-A05 · alterar configuracion global de la JVM. Dos senales, y la
+        # exacta manda: si el par (tipo, metodo) esta resuelto se nombra la
+        # llamada concreta; la heuristica vieja se queda como red de seguridad
+        # para lo que no genera Methodref (una invocacion por reflexion, por
+        # ejemplo). Un solo hallazgo por clase: el arreglo es el mismo.
+        invocados = getattr(c, "miembros_invocados", set())
+        culpables = [f"{t}.{m}()" for t, m in MIEMBROS_QUE_ALTERAN_LA_JVM if (t, m) in invocados]
+        if culpables:
+            hallazgos.append(
+                Hallazgo("R-A05", "error",
+                         f"{c.nombre_clase} altera configuracion global de la JVM "
+                         f"({', '.join(sorted(culpables))}): afecta a TODOS los plug-ins y "
+                         f"aplicaciones del mismo servidor Appian. La salida no es excluir nada, "
+                         f"es pasar el valor EXPLICITAMENTE en cada llamada --"
+                         f"String.format(Locale.ROOT, ...), ZonedDateTime.now(zona)-- en vez de "
+                         f"cambiar el de la JVM")
+            )
+        elif "java.lang.System" in tipos and any("setProperty" in s for s in cadenas):
             hallazgos.append(
                 Hallazgo("R-A05", "error",
                          f"{c.nombre_clase} usa System.setProperty(); prohibido alterar la JVM")

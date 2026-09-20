@@ -1,16 +1,19 @@
 import pathlib
 import sys
 
+import pytest
+
 import classfile
 import verificar_appmarket as va
 
 FIXTURES_CONTRATOS = pathlib.Path(__file__).resolve().parent / "fixtures" / "contratos"
 
 
-def clase(nombre="com.raul.X", tipos=(), cadenas=(), metodos=()):
+def clase(nombre="com.raul.X", tipos=(), cadenas=(), metodos=(), invocados=()):
     return classfile.ClaseLeida(
         nombre_clase=nombre, major=61, tipos_referenciados=set(tipos),
         cadenas=set(cadenas), metodos=list(metodos),
+        miembros_invocados=set(invocados),
     )
 
 
@@ -52,6 +55,44 @@ def test_acceso_al_sistema_de_ficheros_es_error():
 def test_set_property_es_error():
     c = clase(cadenas={"setProperty"}, tipos={"java.lang.System"})
     assert "R-A05" in reglas(va.comprobar([c], "smart-service", {}))
+
+
+def test_alterar_la_jvm_SIN_system_set_property_tambien_es_error():
+    """La politica dice «System.setProperty() OR ANY OTHER METHOD».
+
+    Medido el 21-sep-2026: esta clase pasaba las DIEZ reglas R-A con cero
+    hallazgos. `Locale.setDefault` y `TimeZone.setDefault` cambian la JVM para
+    todos los plug-ins del mismo servidor, y no referencian `java.lang.System`,
+    que era la mitad de la heuristica vieja.
+    """
+    for tipo, metodo in (
+        ("java.util.Locale", "setDefault"),
+        ("java.util.TimeZone", "setDefault"),
+        ("java.security.Security", "setProperty"),
+        ("java.lang.System", "setProperties"),
+        ("java.lang.System", "clearProperty"),
+    ):
+        c = clase(invocados={(tipo, metodo)})
+        assert "R-A05" in reglas(va.comprobar([c], "smart-service", {})), (
+            f"{tipo}.{metodo}() altera la JVM global y R-A05 no lo ve"
+        )
+
+
+def test_el_par_exacto_no_dispara_con_un_metodo_homonimo_de_otro_tipo():
+    """Suelo antivacuidad: lo que hace util al par resuelto es que NO es un
+    cruce de dos conjuntos sueltos. Un `setDefault` de una clase propia —o de
+    un builder cualquiera— no tiene por que alterar nada global.
+    """
+    c = clase(invocados={("com.raul.dominio.Config", "setDefault"),
+                         ("java.util.Locale", "getDefault")})
+    assert "R-A05" not in reglas(va.comprobar([c], "smart-service", {}))
+
+
+def test_un_solo_hallazgo_R_A05_por_clase_aunque_haya_varias_llamadas():
+    # Quien lo arregla hace el mismo cambio: repetir la fila solo entorpece.
+    c = clase(invocados={("java.util.Locale", "setDefault"),
+                         ("java.util.TimeZone", "setDefault")})
+    assert [h.regla for h in va.comprobar([c], "smart-service", {})].count("R-A05") == 1
 
 
 def test_reflexion_sobre_appiancorp_es_error():
@@ -121,3 +162,30 @@ def test_main_sin_clases_compiladas_devuelve_1(tmp_path, monkeypatch, capsys):
     salida = capsys.readouterr().out
     assert "ERROR" in salida
     assert "cero" in salida.lower() or "ninguna clase" in salida.lower()
+
+
+def test_sobre_BYTECODE_REAL_la_clase_que_altera_la_jvm_sale_roja(tmp_path):
+    """La sonda del 21-sep-2026, convertida en guardian.
+
+    No usa un `ClaseLeida` sintetico: compila con `javac`, lee el `.class` con
+    el mismo lector que la puerta real y llama al mismo `comprobar()`. Es la
+    unica forma de que el test falle si el lector deja de resolver el par
+    `(tipo, metodo)` — un fixture a mano seguiria verde sobre un lector roto.
+    """
+    import shutil
+    import subprocess
+
+    import verificar_superficie
+
+    if shutil.which("javac") is None:
+        pytest.skip("javac no esta en el PATH")
+
+    fuente = pathlib.Path(__file__).resolve().parent / "fixtures" / "java" / "AlteraLaJvm.java"
+    destino = tmp_path / "clases"
+    subprocess.run(
+        ["javac", "--release", "17", "-d", str(destino), str(fuente)],
+        check=True, capture_output=True,
+    )
+    clases = verificar_superficie.cargar_clases(destino)
+    assert clases, "no se compilo nada: el test no estaria verificando nada"
+    assert "R-A05" in reglas(va.comprobar(clases, "function", {}))

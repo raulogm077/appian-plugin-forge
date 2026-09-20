@@ -1,6 +1,10 @@
-# Appian solo lee de este fichero las claves error.* y validation.*
-# ("only error messages are read from bundles other than the default locale").
-# El resto se traduce por coherencia, pero Appian siempre lee esos textos de en_US.
+# Appian solo lee de un bundle que no sea el locale por defecto las claves
+# error.* y validation.* ("only error messages are read from bundles other than
+# the default locale"). Una FUNCTION no tiene ninguna de las dos: el unico
+# canal del SDK que lee una clave de bundle es
+# `SmartServiceException.userMessage(...)`, y no hay equivalente del lado de
+# expresion -- comprobado sobre el JAR del SDK 26.3, donde `userMessage` solo
+# aparece en `SmartServiceException` y en su `Builder`. Asi que este fichero se
+# traduce por coherencia y Appian lee estos textos de en_US.
 function.{{FUNCION}}.description={{DESCRIPCION_ES}}
 {{CLAVES_PARAMETROS_ES}}
-error.unexpected=Se produjo un error inesperado. Identificador de correlaci\u00f3n: {0}
