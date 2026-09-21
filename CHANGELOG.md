@@ -1,10 +1,22 @@
 # Cambios
 
-Por fecha, el más reciente arriba. Lo que afecta a plug-ins ya generados va al principio de su
-entrada. Los cambios anteriores al 21-sep-2026 no se registraron aquí: están en el historial de
-git del repositorio.
+Por versión, la más reciente arriba. Lo que afecta a plug-ins ya generados va al principio de su
+entrada.
 
-## 2026-09-21 · versión 0.2.0 — campaña de portabilidad y pruebas adversarias
+## 2026-09-21 · versión 0.2.1 — documentación para quien instala el plugin
+
+Ningún cambio de comportamiento: los scripts, las plantillas y las reglas son los de 0.2.0.
+
+- La documentación que viaja con el plugin —README, `docs/como-funciona.md`, la skill y sus
+  referencias, `assets/reglas-de-validacion.md`, los agentes y este fichero— deja de citar
+  documentos que no se distribuyen con el plugin, y de contar cómo se construyó. Cada regla de `assets/reglas-de-validacion.md` cita ahora su fuente primaria:
+  la documentación de Appian, la página de políticas del AppMarket o el SDK.
+- El README enlaza `docs/como-funciona.md` desde el principio y trae una tabla de qué leer para
+  cada pregunta; `docs/como-funciona.md` abre con lo que ve quien usa el plugin, paso a paso.
+- Dos tests vigilan que eso no vuelva: ninguna cita a documentos que no viajan, y ninguna
+  narración de desarrollo (fechas de mediciones, ciclos, ensayos) en la prosa que se distribuye.
+
+## 2026-09-21 · versión 0.2.0 — instalación desde GitHub, contrato más estricto y reglas nuevas
 
 Lo que afecta a plug-ins **ya generados**: ninguno cambia de veredicto por las reglas nuevas
 salvo que tenga una exclusión de SpotBugs **sin `pattern`** (`category`/`code`), que ahora `R-F14`
@@ -14,8 +26,8 @@ rechaza, o le falte alguno de los ficheros que el andamiaje escribe (`LICENSE`,
 
 - **Instalación desde GitHub**: el repositorio lleva `.claude-plugin/marketplace.json`, así que
   `/plugin marketplace add raulogm077/appian-plugin-forge` + `/plugin install
-  appian-plugin-forge@appian-plugin-forge` bastan. Probado además que el plugin **carga de verdad**
-  con `--plugin-dir`: skill, tres agentes con prefijo y rutas resueltas.
+  appian-plugin-forge@appian-plugin-forge` bastan. Con `--plugin-dir` carga igual: skill, tres
+  agentes con prefijo y rutas resueltas.
 - **`${CLAUDE_PLUGIN_ROOT}` no es una variable de entorno**: Claude Code lo sustituye por la ruta
   al cargar la skill. La nota de PowerShell que mandaba traducirlo a `$env:CLAUDE_PLUGIN_ROOT`
   era falsa con el plugin cargado (esa variable está vacía) y se ha corregido en la skill y sus
@@ -28,9 +40,9 @@ rechaza, o le falte alguno de los ficheros que el andamiaje escribe (`LICENSE`,
   `RANCIO` el log y el certificado, que antes seguían READY sobre un árbol que Gradle ya no
   podía construir.
 - **Los smart services nacen con `docs/decisiones.md`** y con la exclusión de
-  `CRLF_INJECTION_LOGS` de la plantilla ya firmada: al generalizar `R-F14` el 21-sep, todo smart
-  service recién andamiado nacía `NOT_READY` por una exclusión que nadie había escrito. Los
-  demás tipos nacen con el fichero y sin exclusiones.
+  `CRLF_INJECTION_LOGS` de la plantilla ya firmada: antes, todo smart service recién andamiado
+  nacía `NOT_READY` por una exclusión que nadie había firmado. Los demás tipos nacen con el
+  fichero y sin exclusiones.
 - **La puerta del contrato** rechaza ahora, con `FALTA` y no con traza: escalares sin comillas
   (`application_version_min = 26`), versiones sin forma de versión (`"abc"`), capacidades
   escritas como cadena (`sale_a_la_red = "no"` contaba como verdadero) y nombres de entradas,
@@ -43,8 +55,7 @@ rechaza, o le falte alguno de los ficheros que el andamiaje escribe (`LICENSE`,
 - Un `.class` truncado se reporta con su nombre de fichero.
 - README reescrito para quien llega nuevo; los cambios pasan a este fichero.
 
-Del primer ensayo con una **dependencia de terceros real** (libphonenumber, perfil RIGUROSO,
-`READY`):
+Con una **dependencia de terceros** declarada en el contrato:
 
 - **`dependencias` mal colocada es `FALTA`, no silencio**: es clave de raíz del TOML y va antes
   de `[plugin]`; escrita tras una tabla, TOML la colgaba de esa tabla, el contrato daba «OK» y
@@ -59,7 +70,7 @@ Del primer ensayo con una **dependencia de terceros real** (libphonenumber, perf
 - Documentada la tercera trampa de los tests en RIGUROSO: PIT y JaCoCo no cuentan igual un
   constructor privado vacío, y el umbral de PIT falla sin decir qué líneas.
 
-## 2026-09-21 · primera tanda
+## 2026-09-21 · versión 0.1.0
 
 ⚠️ **Si generaste un smart service con una versión anterior a esta, míralo.** La plantilla
 horneaba la clave `error.unexpected` en los dos *bundles* y **no la usaba**: cableaba la frase
@@ -67,7 +78,7 @@ en castellano, así que en un Appian con locale `en_US` el usuario veía españo
 identificador de correlación no le llegaba. Ya está corregido; en un plug-in ya generado se
 arregla añadiendo `.userMessage("error.unexpected", idCorrelacion)` al `SmartServiceException`.
 
-Lo demás de esta tanda, todo en el sentido de «que la puerta no se pueda apagar sin que se note»:
+Lo demás de esta versión, todo en el sentido de «que la puerta no se pueda apagar sin que se note»:
 
 - **`R-A05`** deja de ser heurística y cubre el *«or any other method»* de la política de Appian:
   además de `System.setProperty`, vigila `Locale.setDefault`, `TimeZone.setDefault`,
@@ -83,6 +94,5 @@ Lo demás de esta tanda, todo en el sentido de «que la puerta no se pueda apaga
   saltarse la seguridad de la plataforma.
 - El dossier ya no da por ausente un veredicto escrito como `## VEREDICTO: cumple`.
 
-El cotejo completo de las políticas de Appian Cloud contra lo que este forge garantiza —con lo
-que queda fuera— vive en el repositorio de desarrollo, en
-`docs/auditoria-politicas-appmarket-vs-forge.md` (repo de desarrollo; no viaja con el plugin).
+Qué políticas de Appian Cloud se comprueban mecánicamente, cuáles se delegan en la revisión y
+cuáles quedan fuera, en `assets/reglas-de-validacion.md`.

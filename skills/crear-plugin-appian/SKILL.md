@@ -8,25 +8,23 @@ description: Genera un plugin de Appian de tipo Function —de lectura o writer�
 Existe por una asimetría de costes que atraviesa todo el diseño. El despliegue de un plugin
 de Appian no está a nuestro alcance: Appian exige aprobación previa —para AppMarket público o
 para uso privado por igual—, con escaneos SAST/SCA propios, y documenta que una función queda
-disponible «within a week» (spec §3.3). De ahí dos consecuencias que rigen toda la skill:
+disponible «within a week». De ahí dos consecuencias que rigen toda la skill:
 **nunca se puede ejecutar el plugin generado antes de entregarlo**, y **cada error que no se
 atrape en local cuesta un ciclo completo de una semana**, con una revisión de seguridad ajena
 de por medio. Todo lo que esta skill hace —entrevista disciplinada, plantillas, cuatro capas
 de verificación, certificado explícito— es mover hacia lo local todo lo que se pueda mover.
 
-Cubre únicamente el modo **CREAR** (Fase 1 del proyecto): generación desde cero.
+Cubre únicamente la **creación desde cero** de un plugin nuevo.
 
-La spec de referencia es `docs/superpowers/specs/2026-08-08-appian-plugin-forge-design.md`
-(repo de desarrollo; no viaja con el plugin — «la spec» en el resto de este documento); las
-secciones citadas son las suyas. Las rutas con el prefijo `${CLAUDE_PLUGIN_ROOT}/` apuntan a
-ficheros del propio plugin. Ese prefijo es un **marcador** —`CLAUDE_PLUGIN_ROOT`, con la sintaxis
-`${…}`— que Claude Code **sustituye por la ruta absoluta del plugin al cargar este fichero**
-(`--plugin-dir` o instalado): con el plugin cargado, estas líneas ya llegan con la ruta puesta y
-no hay nada que traducir. **No es una variable de entorno** (`printenv` la devuelve vacía, medido
-el 21-sep-2026 con el plugin cargado), así que donde el marcador aparezca literal —trabajando
-dentro del repo del forge sin cargarlo como plugin, o en una referencia abierta con `Read`— se
-sustituye a mano por la raíz del plugin: `appian-plugin-forge/` en el repo. Las referencias de
-este directorio se citan enteras la primera vez y como `referencias/<fichero>.md` a partir de ahí.
+Las rutas con el prefijo `${CLAUDE_PLUGIN_ROOT}/` apuntan a ficheros del propio plugin. Ese
+prefijo es un **marcador** —`CLAUDE_PLUGIN_ROOT`, con la sintaxis `${…}`— que Claude Code
+**sustituye por la ruta absoluta del plugin al cargar este fichero** (`--plugin-dir` o
+instalado): con el plugin cargado, estas líneas ya llegan con la ruta puesta y no hay nada que
+traducir. **No es una variable de entorno**, así que donde el marcador aparezca literal
+—trabajando dentro del repo del forge sin cargarlo como plugin, o en una referencia abierta con
+`Read`— se sustituye a mano por la raíz del plugin: `appian-plugin-forge/` en el repo. Las
+referencias de este directorio se citan enteras la primera vez y como `referencias/<fichero>.md`
+a partir de ahí.
 
 **Y lo mismo vale para los tres agentes que esta skill lanza**, que es menos evidente porque no
 son rutas: `appian-plugin-forge:<nombre>` solo resuelve como `subagent_type` con el plugin
@@ -47,14 +45,14 @@ expresión— y las demás filas de tipo están en
 **No usar cuando:**
 
 - El usuario pide un **Component** (interfaz HTML/CSS/JS con React) o un **Connected
-  System**. Ambos quedan fuera de la Fase 1 (spec §2.2): tienen cadena de herramientas
-  propia —npm/`sail-tools`/React con descriptor `appian-component-plugin.xml` el primero; el
-  Integration SDK (`connected-systems-core`, `connected-systems-client`) el segundo—, y ni
-  las plantillas ni los validadores de este plugin los cubren.
+  System**. Ambos quedan fuera: tienen cadena de herramientas propia —npm/`sail-tools`/React
+  con descriptor `appian-component-plugin.xml` el primero; el Integration SDK
+  (`connected-systems-core`, `connected-systems-client`) el segundo—, y ni las plantillas ni
+  los validadores de este plugin los cubren.
 - El usuario quiere **modificar, auditar o ampliar un plugin ya existente**, incluido un
-  `.jar` suelto sin fuente. Eso es el modo EDITAR (Fase 2, spec §2.1), que aún no existe.
+  `.jar` suelto sin fuente. Eso es el modo EDITAR, que aún no existe.
 - El usuario quiere **subir de versión de Appian** un plugin ya desplegado, o adaptar
-  deprecaciones. Eso es el modo MIGRAR (Fase 3, spec §2.1), que aún no existe.
+  deprecaciones. Eso es el modo MIGRAR, que aún no existe.
 - El usuario solo necesita **una firma exacta de la API de Appian** (¿existe esta clase?,
   ¿qué parámetros admite?) y no un plugin completo. Eso no necesita el ciclo entero: es una
   consulta puntual, vía `javap` sobre el JAR del SDK o el agente
@@ -63,8 +61,8 @@ expresión— y las demás filas de tipo están en
 ## Process
 
 En runtime la skill sigue el ciclo de vida de `agent-skills` —DEFINE → PLAN → BUILD → VERIFY →
-REVIEW → SHIP— con nombres propios y adaptado al dominio (spec §5.2, decisión D21). Las dos
-piezas que esa adopción añadió sobre el ciclo genérico son el paso **PLAN** y la construcción
+REVIEW → SHIP— con nombres propios y adaptado al dominio. Las dos piezas que esa adopción
+añadió sobre el ciclo genérico son el paso **PLAN** y la construcción
 **incremental por slices** con commit atómico.
 
 ```
@@ -161,18 +159,18 @@ exclusión activa de SpotBugs—, que en un smart service nace ya con una decisi
 exclusión de `CRLF_INJECTION_LOGS` que la propia plantilla activa, con su porqué y con la
 condición bajo la que deja de valer. Si el fichero ya existe, no se toca.
 
-**El dominio NO se andamia, y saberlo importa:** la separación dominio / adaptador (spec
-§5.6, D19) la construye el paso 4, no éste. El convenio es `<paquete>.dominio`
+**El dominio NO se andamia, y saberlo importa:** la separación dominio / adaptador la
+construye el paso 4, no éste. El convenio es `<paquete>.dominio`
 (`contrato.SUBPAQUETE_DOMINIO`), y la capa 2 comprueba ahí que **ninguna clase de dominio
 referencie el SDK** — que es lo que permite que los tests JUnit corran sin cargarlo. La
 columna de insumo del certificado declara cuántas clases de dominio miró: un andamiaje recién
 generado dice `0 clases de dominio`, que es legítimo y visible, no un aprobado.
 
-**Tres trampas al escribir los tests, las tres descubiertas construyendo de verdad.**
+**Tres trampas al escribir los tests.**
 `SmartServiceException.Builder.build()` **lanza `NullPointerException` fuera del runtime de
 Appian** —resuelve el bundle contra un contexto que en JUnit no existe—, así que el test del
-adaptador que ejercita el camino de error se monta con `mockConstruction`, como hace el plug-in
-de referencia; no es un fallo tuyo ni de la plantilla. Si el perfil es RIGUROSO, el certificado
+adaptador que ejercita el camino de error se monta con `mockConstruction`; no es un fallo tuyo
+ni de la plantilla. Si el perfil es RIGUROSO, el certificado
 busca clases `*FuzzTest`/`*PropertyTest` **por el nombre**: nombrarlas así al escribirlas cuesta
 cero, y descubrirlo en el paso 5 cuesta otra pasada (el detalle, en `referencias/certificado.md`).
 Y también en RIGUROSO, **PIT y JaCoCo no cuentan igual un constructor privado vacío**: JaCoCo lo
@@ -216,19 +214,17 @@ se acaba de escribir>`. Devuelve el informe completo.»—.
 
 **Si no vuelve pronto, no te quedes esperando: haz tú el trabajo y sigue.** Vale para los tres
 agentes de esta skill. Un ejecutor parado en silencio no está avanzando, y hay relojes de
-inactividad que lo dan por muerto —en la tanda de pruebas del 20-sep-2026 se llevó por delante a
-**3 de 5 ejecutores**, todos esperando a un hijo que sí había terminado su trabajo—. Ejecuta el
-comando por tu cuenta, anota en el informe que lo hiciste, y cuando el informe del agente llegue,
-reconcílialo: llegar tarde no lo invalida, y en dos de aquellas pruebas traía hallazgos reales que
-el ejecutor no había visto. Lo que no vale es darlo por hecho sin que llegue.
+inactividad que lo dan por muerto: el caso más frecuente es un ejecutor esperando a un hijo que
+ya había terminado su trabajo. Ejecuta el comando por tu cuenta, anota en el informe que lo
+hiciste, y cuando el informe del agente llegue, reconcílialo: llegar tarde no lo invalida, y
+puede traer hallazgos reales que tú no viste. Lo que no vale es darlo por hecho sin que llegue.
 
 **Ese agente deja capturada la salida del
 último build en `build/salida-build.log`**, que es lo que el paso 5 lee: si se construye a mano en
 su lugar, hay que capturarla igual, con el comando que publica ese paso. Para cualquier duda sobre una firma, una clave o un valor
 admitido de la API de Appian, la jerarquía de fuentes es `javap` sobre el JAR del SDK > agente
-`appian-plugin-forge:appian-docs-researcher` > javadoc web (spec §6.3) — la guía
-local (`docs/AI Plugin Generator skill Support Guide.md`, repo de desarrollo; no viaja con el
-plugin) es fuente de estructura, nunca de estos hechos (ver `## Common Rationalizations`).
+`appian-plugin-forge:appian-docs-researcher` > javadoc web. Una guía o un tutorial de terceros
+puede servir de estructura, nunca de fuente de estos hechos (ver `## Common Rationalizations`).
 
 **Dónde está ese JAR**, porque `javap` se exige a lo largo de esta skill —encabeza la jerarquía de
 fuentes de aquí arriba, y volverá en `## Common Rationalizations` y en `## Red Flags`— y sin la
@@ -244,7 +240,7 @@ baja un escalón por necesidad, no por comodidad: se usa el agente
 JAR**, para volver a comprobarlo en el paso 4. Se le lanza con la pregunta concreta y qué
 decisión depende de ella, nunca con la duda general —«Necesito saber
 `<pregunta concreta sobre la API de Appian>` para decidir `<qué campo o tipo_java depende de la
-respuesta>`. Marca el hecho como no verificado contra el JAR.»—. Es lo que manda spec §6.3: cuando no hay
+respuesta>`. Marca el hecho como no verificado contra el JAR.»—. La regla es una: cuando no hay
 fundamento, se marca; no se aparenta certeza.
 
 **Prerequisitos de entorno**: los de la comprobación previa al paso 1 —JDK 17, git, Python 3.11+ y
@@ -302,11 +298,11 @@ antes:
 mkdir -p build && ./gradlew build releaseCheck --console=plain > build/salida-build.log 2>&1
 ```
 
-**«Worktree limpio» es TODO el árbol, no solo `src/`**, y ahí tropezaron 2 de las 5 pruebas del
-20-sep-2026: uno escribió `docs/decisiones.md` mientras el build corría, y al otro le ensució el
-árbol **el propio `docs/CERTIFICADO.md`** al repetir la puerta —el certificado que la pasada
-anterior acababa de escribir—. Así que antes de lanzarla: commitear todo, `docs/` incluido, y si
-hay que repetirla, commitear también el certificado de la pasada previa.
+**«Worktree limpio» es TODO el árbol, no solo `src/`**, y hay dos formas típicas de ensuciarlo
+sin querer: escribir `docs/decisiones.md` mientras el build corre, y **el propio
+`docs/CERTIFICADO.md`** al repetir la puerta —el certificado que la pasada anterior acaba de
+escribir—. Así que antes de lanzarla: commitear todo, `docs/` incluido, y si hay que repetirla,
+commitear también el certificado de la pasada previa.
 
 **El criterio no hay que aplicarlo a mano: el certificado lo publica.** Su cabecera abre con
 `**STATUS: READY_FOR_APPIAN_SUBMISSION**` o `**STATUS: NOT_READY**`, y cuando dice `NOT_READY`
@@ -388,13 +384,13 @@ piezas de prosa que no se derivan de ningún artefacto viven fuera y él solo la
 
 Escribir cualquiera de las dos *dentro* de `DOSSIER.md` es perderla en la siguiente ejecución.
 
-El dossier reúne las seis piezas de la spec §8.1: el contrato, las decisiones y su porqué, el
+El dossier reúne seis piezas: el contrato, las decisiones y su porqué, el
 inventario de API usada (extraído del bytecode, no escrito a mano), el certificado del paso
 5, el historial de versiones, y la **firma pública congelada** —clave, y nombre y tipo de
 cada input/output— que es lo único que hace comprobable la regla de clave nueva
 (`referencias/entrevista.md`, séptima pregunta) en una futura edición. No es un despliegue:
 es un expediente de sumisión, un disparo sin rollback, con una semana de latencia y un
-tercero decidiendo (spec §9).
+tercero decidiendo.
 
 **Criterio de salida:** las seis piezas están presentes, y la firma congelada corresponde al
 contrato final aceptado en el paso 1 — no a una versión intermedia de una entrevista
@@ -406,7 +402,7 @@ escribe `docs/GUIA_INTEGRACION.md` (para el desarrollador Appian que va a integr
 invocarlo según el tipo, tabla de entradas/salidas, versión mínima requerida) y
 `docs/FICHA_APPMARKET.md` (texto de ficha para quien lo encuentra en el Marketplace). Los dos se
 derivan enteramente de `docs/contrato.md`, sin preguntar nada nuevo, y **no son piezas del
-dossier**: el dossier tiene audiencia interna —quien edite este mismo plugin en la Fase 2—; estos
+dossier**: el dossier tiene audiencia interna —quien edite este mismo plugin más adelante—; estos
 dos documentos son para quien lo va a usar. Se generan siempre, en la misma pasada que el dossier.
 
 **Criterio de salida, completo:** las seis piezas del dossier están presentes con la firma
@@ -419,13 +415,13 @@ contenido no vacío.
 |---|---|
 | «Ya compila, los tests son opcionales» | Compilar prueba que las firmas existen, no que el plugin haga nada correcto |
 | «Esta clase de `com.appiancorp` seguro que existe» | `javap` sobre el JAR tarda un segundo y es evidencia primaria |
-| «La guía dice que…» *(sobre una firma, una clave o un valor admitido)* | La guía es fuente de **estructura**, no de hechos de API: su formato de `.properties` para smart services **impide desplegar** y su `paletteCategory` ya no es válido. Para un hecho, `javap` o la documentación |
+| «Lo dice una guía / un tutorial» *(sobre una firma, una clave o un valor admitido)* | Una guía es fuente de **estructura**, no de hechos de API: circulan guías cuyo formato de `.properties` para smart services —sin sufijo de locale— **impide desplegar**, y cuyo `paletteCategory = "Appian Smart Services"` ya no es válido. Para un hecho, `javap` o la documentación |
 | «Ya lo probarás al desplegar» | Desplegar cuesta una semana y una aprobación ajena |
 | «Es un plugin pequeño, no hace falta contrato» | Sin contrato no hay tests, y sin tests no hay nada que verificar |
-| «Es solo añadir un input, dejo la misma clave» | Cambiar inputs u outputs sin clave nueva **rompe procesos vivos en producción** (auditoría §7.4). Es el único error de esta lista cuya factura no la paga el despliegue — **y ninguna capa lo detecta**: sin `[version_anterior]` en el contrato, `R-F08` no salta, ni con error ni con aviso. La red es la séptima pregunta de la entrevista, y no hay otra |
-| «Uso la constante del SDK, así que la paleta está bien» | El SDK expone 7 valores y solo 4 son válidos; tres se remapean en silencio (auditoría §2.5) |
+| «Es solo añadir un input, dejo la misma clave» | Cambiar inputs u outputs sin clave nueva **rompe procesos vivos en producción**: la documentación de Appian (*Smart Service Plug-ins › Best practices › Upgrading*) lo dice con todas las letras —«You must use a new key. If you overwrite the plug-in, existing nodes may fail»—. Es el único error de esta lista cuya factura no la paga el despliegue — **y ninguna capa lo detecta**: sin `[version_anterior]` en el contrato, `R-F08` no salta, ni con error ni con aviso. La red es la séptima pregunta de la entrevista, y no hay otra |
+| «Uso la constante del SDK, así que la paleta está bien» | El SDK expone 7 valores y solo 4 son válidos; tres se remapean en silencio. La documentación de Appian solo admite `Workflow`, `Automation Smart Services`, `Deprecated Services` y `Hidden`: «any other value will be mapped to Automation Smart Services» |
 | «El perfil riguroso tarda mucho para lo que es» | El perfil lo decide lo que el plug-in toca, no la prisa. Si parsea formatos ajenos o sale a la red, el espacio de entradas no es nuestro |
-| «No hay `import` de esa clase, no la estoy usando» | Un nombre cualificado no genera `import`. Por eso el escáner mira el bytecode y no el fuente (D16) |
+| «No hay `import` de esa clase, no la estoy usando» | Un nombre cualificado no genera `import`. Por eso el escáner mira el bytecode y no el fuente |
 | «El build lo corrí yo y pasó, el log da igual» | Sin log, la tabla no puede distinguir esa palabra de un build que falló: sus **filas delegadas** —**ocho** en RIGUROSO, **cuatro** en ESTÁNDAR— certificarían idéntico |
 
 ## Red Flags
@@ -442,8 +438,9 @@ contenido no vacío.
 - Se certifica sin haber capturado la salida de `./gradlew build`, o con una capturada antes
   del último cambio del fuente.
 - Se excluye `SECSP` para que el build de un servlet pase, antes de haber escrito `ejecutar()`.
-- Se copia una regla de la auditoría dentro de la skill en vez de referenciarla.
-- Se responde a una duda de API citando la guía local.
+- Se copia una regla de validación dentro de la skill en vez de referenciarla.
+- Se responde a una duda de API citando una guía o un tutorial en vez de `javap` o la
+  documentación.
 - Se reutiliza la clave de un plug-in desplegado tras cambiar sus inputs u outputs.
 - Aparece un campo mutable —de instancia o `static`— en una clase de función.
 - El dominio importa `com.appiancorp.*`, o un test de dominio necesita el SDK para arrancar.
@@ -452,7 +449,7 @@ contenido no vacío.
 
 ## Verification
 
-Cuatro capas (spec §5.3), todas mecanizadas por script y reunidas por
+Cuatro capas, todas mecanizadas por script y reunidas por
 `${CLAUDE_PLUGIN_ROOT}/scripts/verificar_todo.py`; las reglas exactas, con su fuente y su ID
 (`R-F*`, `R-A*`, `R-B*`, `R-J*`), viven en
 `${CLAUDE_PLUGIN_ROOT}/assets/reglas-de-validacion.md` — no se duplican aquí.
@@ -466,8 +463,8 @@ Cuatro capas (spec §5.3), todas mecanizadas por script y reunidas por
 
 El perfil RIGUROSO añade cuatro puertas más (cobertura JaCoCo, mutación PIT, *property
 tests*/fuzz sembrado, build reproducible). El perfil no cambia qué reglas se cumplen, solo
-qué puertas se ejecutan (spec §2.3): las reglas del framework y las políticas de AppMarket
-son innegociables en los dos perfiles.
+qué puertas se ejecutan: las reglas del framework y las políticas de AppMarket son
+innegociables en los dos perfiles.
 
 Dos reglas gobiernan la lectura de la tabla y ninguna se negocia: **una puerta que no se
 ejecutó nunca se marca como pasada** —ni «pendiente» ni «delegada» son «OK»— y **un verde sobre
@@ -478,6 +475,6 @@ ejecuta quién, y por qué la de build reproducible no llega a verde nunca— vi
 
 Dos filas van siempre en rojo, y decirlo con todas las letras es la función del certificado,
 no un defecto: la resolución OSGi real de la plataforma y la ejecución en Appian real no son
-verificables en local (spec §8.2). Un plugin ESTÁNDAR no debe poder pasar por RIGUROSO
+verificables en local. Un plugin ESTÁNDAR no debe poder pasar por RIGUROSO
 leyendo el dossier: la cabecera del certificado declara el perfil, la versión del SDK, la del
 índice de tipos con su hash, y la revisión de git.

@@ -10,7 +10,7 @@ mecanico; tu miras lo que solo se puede juzgar leyendo.
 ## Que revisas
 
 1. **¿El codigo hace lo que dice el contrato?** Requisito a requisito.
-2. **Separacion dominio / adaptador** (D19): la logica no debe estar en la
+2. **Separacion dominio / adaptador**: la logica no debe estar en la
    clase con anotaciones de Appian.
 3. **Concurrencia** en clases de funcion: ningun campo mutable, ni de
    instancia ni `static`. La plataforma no garantiza cuantas veces evalua una
@@ -22,9 +22,9 @@ mecanico; tu miras lo que solo se puede juzgar leyendo.
 6. **Recursos**: todo `Closeable` se cierra en `try-with-resources` o en un
    `finally`, **siempre, declare el contrato lo que declare**. Y timeouts
    finitos y tope de tamano cuando declara red o parseo.
-   Esto es tuyo del todo: medido el 21-sep-2026, SpotBugs da BUILD SUCCESSFUL
-   sobre un stream que nunca se cierra — el patron que lo veria es de categoria
-   experimental y no se reporta. **Si tu no lo miras, no lo mira nadie.**
+   Esto es tuyo del todo: SpotBugs da BUILD SUCCESSFUL sobre un stream que
+   nunca se cierra — el patron que lo veria es de categoria experimental y no
+   se reporta. **Si tu no lo miras, no lo mira nadie.**
 7. **De quien es el contexto** (politica de AppMarket: *"Plug-ins must not
    directly use the context of a specific user, but must use the context
    provided via the initial constructor"*). En un servlet, `R-A01` esta exento

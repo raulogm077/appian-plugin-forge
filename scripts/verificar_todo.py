@@ -829,8 +829,8 @@ def ejecutar(
 
     # En PARALELO, y no por elegancia: en Windows cada `subprocess.run` cuesta
     # ~0,5 s de puro arranque, asi que seis en serie son ~3 s de espera pura
-    # sobre ~0,2 s de trabajo real. Medido sobre el proyecto de referencia:
-    # 2,15 s en serie frente a 0,88 s en paralelo.
+    # sobre ~0,2 s de trabajo real. Medido sobre un smart service real de
+    # tamano medio: 2,15 s en serie frente a 0,88 s en paralelo.
     #
     # Son independientes y se puede afirmar por que: cinco solo LEEN, y el
     # unico que escribe --`verificar_superficie`, que deja el inventario-- no

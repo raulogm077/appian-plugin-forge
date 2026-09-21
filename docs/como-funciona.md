@@ -1,7 +1,9 @@
 # Cómo funciona `appian-plugin-forge`
 
-Mapa visual del plugin: qué hace en cada paso, **quién** lo hace y **con qué**. Sirve de
-documentación y de recordatorio de un vistazo para quien lo mantiene.
+Explica qué hace el plugin en cada paso, **quién** lo hace —tú, Claude leyendo la skill, un
+script o un agente— y **con qué**, y termina con lo que el sistema **no** puede comprobar. Es el
+documento para entender el plugin antes de usarlo, y al que volver cuando algo del certificado no
+cuadra. El `README.md` cubre requisitos, instalación y primer uso.
 
 **Este documento no define ninguna regla: las señala.** La regla de la casa es enlazar en vez de
 duplicar, porque dos copias divergen. Dónde vive cada cosa:
@@ -13,18 +15,16 @@ duplicar, porque dos copias divergen. Dónde vive cada cosa:
 | Cómo se lee la tabla del certificado | `skills/crear-plugin-appian/referencias/certificado.md` |
 | El formato de la entrevista y las siete preguntas | `skills/crear-plugin-appian/referencias/entrevista.md` |
 | Cómo se deduce el tipo de plug-in | `skills/crear-plugin-appian/referencias/tipos-de-plugin.md` |
-| El porqué de cada decisión de diseño | `docs/superpowers/specs/2026-08-08-appian-plugin-forge-design.md` (repo de desarrollo; no viaja con el plugin) |
+| Requisitos, instalación, primer uso y solución de problemas | `README.md` |
 
 ### Convención de rutas, que aquí hace falta
 
-Este documento habla de tres árboles distintos y los tres tienen un `docs/`:
+Este documento habla de dos árboles distintos y los dos tienen un `docs/`:
 
 - **Sin prefijo** — relativo a la raíz de este plugin: `scripts/andamiar.py`,
   `assets/plantillas/`, `skills/crear-plugin-appian/SKILL.md`.
 - **`<proyecto-generado>/…`** — el plug-in de Appian que la skill produce, que es otro repositorio
   con su propio `docs/`: `<proyecto-generado>/docs/CERTIFICADO.md`.
-- **Con la coletilla «(repo de desarrollo)»** — material de diseño que vive fuera del plugin y **no
-  viaja con él**: la spec, la auditoría y la retrospectiva.
 
 Unos pocos ficheros del proyecto generado aparecen por su nombre suelto cuando el contexto ya deja
 claro de quién son —`build.gradle`, `appian-plugin.xml`, `config/spotbugs/exclude.xml`, los
@@ -32,20 +32,46 @@ claro de quién son —`build.gradle`, `appian-plugin.xml`, `config/spotbugs/exc
 
 ---
 
+## Qué verás tú, antes de los diagramas
+
+Lo que sigue es el sistema por dentro. Visto desde fuera, un plug-in se hace así:
+
+1. **Describes lo que necesitas** en lenguaje natural. Claude te hace una pregunta por turno,
+   siempre con su hipótesis delante para que la corrijas, y te propone el tipo de plug-in y el
+   perfil de rigor con su porqué. Termina cuando dices «sí» a un **contrato**: un Markdown con un
+   bloque TOML que fija nombre, clave, paquete, entradas, salidas y capacidades.
+2. **Claude escribe un plan** de tareas pequeñas, cada una con su criterio de aceptación.
+3. **Un script andamia el proyecto Gradle** a partir del contrato: adaptador de Appian,
+   manifiesto, bundles, cadena de build. Sin modelo de por medio, así que sale igual siempre.
+4. **Claude implementa tarea a tarea**, tests primero, y hace un commit por cada una. Cuando el
+   build se pone rojo, un agente cierra el bucle compilar/corregir. El primer `./gradlew build`
+   descarga Gradle y las dependencias y tarda minutos; los siguientes, segundos.
+5. **Un script verifica en cuatro capas** y escribe `docs/CERTIFICADO.md`, con un `STATUS` en la
+   cabecera y una fila por puerta que dice qué se ejecutó, sobre cuánto y con qué resultado.
+6. **Un agente que no ha visto la conversación revisa el código contra el contrato**, requisito a
+   requisito. Si corrige algo, se vuelve a verificar.
+7. **Un script reúne el dossier** de sumisión y dos documentos para quien va a integrar el plug-in
+   en Appian.
+
+Tú intervienes en el paso 1 y cuando el certificado o la revisión te pidan una decisión. Lo que
+tienes al final es un proyecto Gradle con su JAR en `build/libs/` y su expediente en `docs/`. El
+resto de este documento explica cada paso, por qué está montado así y dónde están sus límites.
+
+---
+
 ## 1 · Por qué el sistema tiene esta forma
 
 Una sola asimetría lo explica casi todo: **un plug-in de Appian no se puede ejecutar antes de
 entregarlo**. Appian exige aprobación previa —AppMarket público o uso privado por igual—, con sus
-propios escaneos, y documenta que una función queda disponible «within a week» (spec §3.3). De ahí
-las dos consecuencias que rigen la skill entera: *nunca se prueba lo generado antes de entregarlo*,
-y *cada error que no se atrape en local cuesta un ciclo completo de una semana*.
+propios escaneos, y su documentación de plug-ins dice que una función queda disponible «within a
+week». De ahí las dos consecuencias que rigen la skill entera: *nunca se prueba lo generado antes
+de entregarlo*, y *cada error que no se atrape en local cuesta un ciclo completo de una semana*.
 
 De ahí también el defecto que este sistema persigue por encima de cualquier otro: el **verde
-vacuo** —algo que produce un resultado plausible sin haber hecho el trabajo—, que apareció **siete
-veces en siete sitios distintos** durante la Fase 1 (`docs/retrospectiva-fase1.md` §1, repo de
-desarrollo). Un escáner que recorre cero clases, un `BUILD SUCCESSFUL` sobre cero tests, un
-certificado que nunca leía el resultado del build. La pregunta que los encuentra, y que conviene
-hacerle a toda pieza capaz de reportar éxito, es:
+vacuo** —algo que produce un resultado plausible sin haber hecho el trabajo—. Un escáner que
+recorre cero clases, un `BUILD SUCCESSFUL` sobre cero tests, un certificado que nunca lee el
+resultado del build: cada pieza del certificado existe porque una de esas formas es posible. La
+pregunta que las encuentra, y que conviene hacerle a toda pieza capaz de reportar éxito, es:
 
 > ¿Qué trabajo respalda este verde, y **cómo se vería si no se hubiera hecho**?
 
@@ -218,7 +244,7 @@ flowchart LR
 
 **Tres cosas que explican por qué las capas están montadas así:**
 
-- **Bytecode y no fuente** (decisión D16). Un nombre cualificado no genera `import`, y la reflexión
+- **Bytecode y no fuente.** Un nombre cualificado no genera `import`, y la reflexión
   tampoco: el *constant pool* contiene toda referencia real. `scripts/classfile.py` lo lee una sola
   vez, y esa pasada alimenta a la vez la puerta de la capa 2 y el inventario de API del dossier,
   así que los dos no pueden desincronizarse.
@@ -262,7 +288,7 @@ cuatro = **17 filas**.
 | 3 | Bundles y locales | ambos | `scripts/verificar_bundles.py` |
 | 4 | Compilación · SDK 26.3 / release 17 | ambos | delegada a Gradle (`:compileJava`), resuelta leyendo el log |
 | 5 | Superficie documentada · índice 26.3 | ambos | `scripts/verificar_superficie.py` |
-| 6 | Deriva contra la versión del entorno | ambos | **informativa**: no bloquea, su mecanización es insumo de la Fase 3 |
+| 6 | Deriva contra la versión del entorno | ambos | **informativa**: no bloquea; migrar un plug-in a otra versión de Appian queda fuera de este plugin |
 | 7 | Tests unitarios | ambos | delegada a Gradle (`:test`) |
 | 8 | SpotBugs + FindSecBugs | ambos | delegada a Gradle (`:spotbugsMain`) |
 | 9 | Licencias de terceros | ambos | `scripts/verificar_licencias.py` |
@@ -360,19 +386,19 @@ revisión, dos dossieres de fechas distintas son indistinguibles.
 **El código de salida distingue tres desenlaces, y el tercero no es un veredicto.** `0`, ninguna
 fila roja que cuente; `1`, las hay —una verificación que sí ocurrió y salió mal—; y `2`, la raíz
 que se pasó **no existe o no es un directorio**: ahí no se escribe certificado ni se crea ningún
-directorio. Hasta el ciclo 12 ese caso producía un certificado entero, de ocho mil caracteres,
-sobre un proyecto inexistente: diez filas rojas cuyo contenido real era «te equivocaste de ruta»,
-más un directorio nuevo en el sitio equivocado. Un documento con forma de veredicto es peor que
-un error, porque se archiva.
+directorio. Sin esa distinción, una ruta equivocada produciría un certificado entero sobre un
+proyecto inexistente: diez filas rojas cuyo contenido real sería «te equivocaste de ruta», más un
+directorio nuevo en el sitio equivocado. Un documento con forma de veredicto es peor que un error,
+porque se archiva.
 
 ### Por qué dos filas van SIEMPRE en rojo
 
 **«Resolución OSGi en la plataforma»** y **«Ejecución en Appian real»** salen en rojo en todos los
 certificados que este sistema emite, y eso es la función del documento, no un defecto suyo:
 
-- La **resolución OSGi** de la plataforma no tiene contenedor equivalente en local (riesgo R13 de
-  la spec). La capa 4 atrapa el fallo más probable —una clase que falta— pero no un conflicto de
-  versiones con lo que Appian ya tiene cargado.
+- La **resolución OSGi** de la plataforma no tiene contenedor equivalente en local. La capa 4
+  atrapa el fallo más probable —una clase que falta— pero no un conflicto de versiones con lo que
+  Appian ya tiene cargado.
 - La **ejecución en Appian real** es imposible sin despliegue aprobado, que es exactamente la
   asimetría con la que empieza este documento.
 
@@ -405,7 +431,7 @@ motivo:
 | Filas del certificado | 13 | 17 |
 | Cómo se materializa en el proyecto generado | `assets/plantillas/comun/build.gradle.tmpl` | el mismo, **más** el bloque de `assets/plantillas/perfil-riguroso.gradle.tmpl` |
 
-**El perfil no cambia qué reglas se cumplen, solo qué puertas se ejecutan** (spec §2.3). Se propone
+**El perfil no cambia qué reglas se cumplen, solo qué puertas se ejecutan.** Se propone
 —no se pregunta aparte— a partir de cuatro de las preguntas de admisión de la entrevista:
 `parsea_formatos_ajenos`, `sale_a_la_red`, `toca_credenciales` y `datos_personales`. La lista es
 corta a propósito: si casi todo dispara RIGUROSO, el perfil deja de distinguir nada.
@@ -512,7 +538,7 @@ Dos consecuencias que conviene tener presentes:
 
 | Plantilla | Para qué |
 |---|---|
-| `assets/plantillas/comun/build.gradle.tmpl` | La cadena de build: toolchain 17, SpotBugs + FindSecBugs, SBOM CycloneDX, JAR reproducible y la verificación del propio JAR. **Deriva del proyecto de referencia**, no de la guía |
+| `assets/plantillas/comun/build.gradle.tmpl` | La cadena de build: toolchain 17, SpotBugs + FindSecBugs, SBOM CycloneDX, JAR reproducible y la verificación del propio JAR. **Copiada de la cadena de build de un smart service ya aprobado por Appian**, no escrita desde cero |
 | `assets/plantillas/comun/settings.gradle.tmpl`, `assets/plantillas/comun/gitignore.tmpl`, `assets/plantillas/comun/LICENSE.tmpl`, `assets/plantillas/comun/THIRD_PARTY_NOTICES.md.tmpl` | El resto del esqueleto común del proyecto generado |
 | `assets/plantillas/comun/spotbugs-exclude.xml.tmpl` | El `config/spotbugs/exclude.xml` del proyecto generado. Trae ya redactado, comentado y con su argumento el bloque del `SECSP` de servlets, para que la decisión se tome leyéndolo allí |
 | `assets/plantillas/comun/gradlew`, `assets/plantillas/comun/gradlew.bat`, `assets/plantillas/comun/gradle/wrapper/` | El wrapper de Gradle 8.14.3, copiado en binario: cada proyecto generado lleva el suyo |
@@ -551,9 +577,9 @@ prometemos lo que el sistema no comprueba**.
 - **Dos reglas y media de AppMarket son heurísticas declaradas, no infalibles** (`R-A02`, `R-A06`, y
   el resto heredado de `R-A05`): combinan una referencia de tipo con una cadena del *constant pool*,
   y el análisis a nivel de fichero no distingue si vienen de la misma llamada. Sus falsos positivos
-  conocidos están escritos en `assets/reglas-de-validacion.md`. **`R-A05` dejó de serlo el
-  21-sep-2026**: su parte principal compara el par `(tipo, método)` resuelto desde el `Methodref`,
-  que es una sola señal. La misma vía está disponible para las otras dos el día que compense.
+  conocidos están escritos en `assets/reglas-de-validacion.md`. **`R-A05` no lo es**: su parte
+  principal compara el par `(tipo, método)` resuelto desde el `Methodref`, que es una sola señal.
+  La misma vía está disponible para las otras dos el día que compense.
 - **`R-A01` no ve el matiz por método.** La regla real es «no `ServiceLocator` en constructores», y
   dentro de `doGet`/`doPost` de un servlet es legítimo: ahí se **delega a la lente de revisión**,
   que es un agente, no un script.
@@ -565,14 +591,13 @@ prometemos lo que el sistema no comprueba**.
   convenios de otras bibliotecas ni los tests que vivan en otro *source set*. Es fiable como
   **declaración** —dice en qué unidad cuenta y bloquea el `READY` cuando esa unidad es cero—, no
   como medida de esfuerzo.
-- **La carga dinámica por cadena evade cualquier análisis estático** (riesgo R12 de la spec). Está
-  mitigada, no resuelta: `R-A06` prohíbe la reflexión sobre `com.appiancorp.*` justo donde sí se
-  puede comprobar mecánicamente.
-- **La red contra el verde vacuo hace visible la vacuidad, no siempre la impide.** La
-  retrospectiva de la Fase 1 midió que el aviso automático cazaba **2 de 6** instancias conocidas;
-  desde entonces seis puertas declaran unidad portante y un verde vacuo bloquea el `STATUS`, pero
-  solo donde alguien declaró esa portante. La forma que se escapa es siempre la misma: cero en la
-  dimensión que importa, con las demás sanas.
+- **La carga dinámica por cadena evade cualquier análisis estático.** Está mitigada, no
+  resuelta: `R-A06` prohíbe la reflexión sobre `com.appiancorp.*` justo donde sí se puede
+  comprobar mecánicamente.
+- **La red contra el verde vacuo hace visible la vacuidad, no siempre la impide.** Seis puertas
+  declaran unidad portante y un verde vacuo bloquea el `STATUS`, pero solo donde alguien declaró
+  esa portante. La forma que se escapa es siempre la misma: cero en la dimensión que importa, con
+  las demás sanas.
 - **Delegar no es aprobar, y el certificado no aprueba nada.** `READY_FOR_APPIAN_SUBMISSION`
   significa que las puertas que este sistema puede ejecutar se ejecutaron y pasaron sobre insumos
   reales. Quien aprueba es Appian, una semana después, y no hay rollback.

@@ -2,12 +2,11 @@
 
 Son los criterios de aceptacion publicados por quien nos va a juzgar, asi que
 cumplirlos SIEMPRE sale barato comparado con un ciclo de aprobacion de una
-semana (spec D3).
+semana.
 
-Sobre bytecode, no sobre fuente: el proyecto de referencia hace la version de
-fuente y tiene que partir los tokens ('Service' + 'Locator') para no delatarse
-a si mismo — sintoma de que un escaner de fuente se evade con un nombre
-cualificado o con reflexion.
+Sobre bytecode, no sobre fuente: un escaner de fuente tiene que partir sus
+propios tokens ('Service' + 'Locator') para no delatarse a si mismo — sintoma
+de que se evade con un nombre cualificado o con reflexion.
 """
 
 from __future__ import annotations

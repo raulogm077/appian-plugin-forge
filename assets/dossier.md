@@ -1,13 +1,13 @@
 > **Nota — esto NO es una plantilla ejecutable.** Es una referencia estatica
-> de la forma del dossier (spec S8.1) para quien no quiera leer el codigo.
+> de la forma del dossier para quien no quiera leer el codigo.
 > Vive fuera de `assets/plantillas/` (y sin sufijo `.tmpl`) a proposito: ese
 > directorio son los ficheros que `andamiar.py` puede llegar a copiar a un
 > proyecto generado, y sus marcadores `{{MARCADOR}}` son los que reconoce
 > `sustituir()`. Este fichero usa `<marcador>` porque no es de esa familia
 > -- `andamiar.py` no lo mapea y `generar_dossier.render()` no lo lee--, y
 > mezclado alli, un `<marcador>` no dispara el chequeo de "marcadores sin
-> resolver" si algun dia el mapa de plantillas pasara a un glob (hallazgo de
-> revision, tarea 16 ronda 1). El dossier real lo escribe
+> resolver" si algun dia el mapa de plantillas pasara a un glob. El dossier
+> real lo escribe
 > `scripts/generar_dossier.py`: las piezas 3 (inventario de API) y 6 (firma
 > publica congelada) salen del bytecode y del contrato en cada ejecucion, no
 > se escriben a mano ni se copian de aqui.
@@ -74,9 +74,12 @@ si todavia no existe>
 
 ## 6. Firma publica congelada
 
-**No editar a mano.** Es el dato contra el que la Fase 2 comprueba si un cambio
-de inputs u outputs obliga a clave nueva. Sobrescribir la clave tras cambiarlos
-puede romper procesos vivos en produccion (auditoria S7.4).
+**No editar a mano.** Es el dato contra el que `R-F08` comprueba, en la version
+siguiente, si un cambio de inputs u outputs obliga a clave nueva. Sobrescribir
+la clave tras cambiarlos puede romper procesos vivos en produccion: *Smart
+Service Plug-ins > Best practices > Upgrading* dice *"Changed Node
+Inputs/Outputs: You must use a new key. If you overwrite the plug-in, existing
+nodes may fail."*
 
 ### Para pegar en el contrato de la version siguiente
 
@@ -110,12 +113,12 @@ salidas = ["<nombre>:<TipoJava>"]
 ```
 
 `key` y `version` van HERMANAS de `firma`, no dentro: `R-F08` lee
-`anterior["key"]`, y con la key metida en el objeto firma la comparacion era
-`None != key` —siempre falsa— y la regla callaba. `contrato.py` exige ademas que
-`version_anterior.firma` sea una tabla, asi que un bloque plano copiado de aqui
-producia un contrato que la puerta rechaza.
+`anterior["key"]`, y con la key metida en el objeto firma la comparacion seria
+`None != key` —siempre falsa— y la regla callaria. `contrato.py` exige ademas
+que `version_anterior.firma` sea una tabla, asi que un bloque plano produce un
+contrato que la puerta rechaza.
 
 Formato de cada entrada del array: `nombre:tipo`, no solo el nombre. Es lo
-que compara R-F08 en `verificar_framework.py`: un cambio de tipo con el
+que compara `R-F08` en `verificar_framework.py`: un cambio de tipo con el
 nombre igual (`doc: Long` a `doc: String`) rompe los procesos vivos exactamente
 igual que anadir un input, y solo se detecta si la firma guarda el tipo.

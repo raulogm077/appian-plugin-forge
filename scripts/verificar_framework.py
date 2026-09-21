@@ -478,10 +478,9 @@ def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list, *,
     # `perfil-riguroso.gradle.tmpl` activa `dependencyLocking`, pero en el modo
     # por defecto de Gradle eso no exige ni escribe ningun `gradle.lockfile`:
     # `./gradlew build` termina en BUILD SUCCESSFUL sin dejar rastro, y la
-    # "reproducibilidad" del perfil se queda en una intencion. El primer
-    # ensayo con una dependencia real (21-sep-2026) genero el lockfile por su
-    # cuenta con `./gradlew dependencies --write-locks` porque nada se lo pedia
-    # ni lo echaba en falta. El proyecto de referencia lo lleva commiteado.
+    # "reproducibilidad" del perfil se queda en una intencion. El lockfile se
+    # genera con `./gradlew dependencies --write-locks` y se commitea; sin esta
+    # regla nada lo pedia ni lo echaba en falta.
     if gradle is not None and lockfile is False and "dependencyLocking" in gradle:
         hallazgos.append(
             Hallazgo("R-F15", "error",

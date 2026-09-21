@@ -1,7 +1,7 @@
 # Deducción del tipo de plugin
 
-Fuente: spec `docs/superpowers/specs/2026-08-08-appian-plugin-forge-design.md` §6.1 y §2.2
-(repo de desarrollo; no viaja con el plugin).
+Cómo se deduce el tipo de plugin de lo que el usuario describe, y por qué la fila de la
+*function writer* es la que más cara cuesta equivocar; se abre desde el paso 1 de `SKILL.md`.
 
 ## No se pregunta qué tipo de plugin se quiere
 
@@ -11,7 +11,7 @@ categoría de la API de Appian encaja eso. Se deduce del uso que describe y se p
 su porqué**, como cualquier otra hipótesis de la entrevista
 (`${CLAUDE_PLUGIN_ROOT}/skills/crear-plugin-appian/referencias/entrevista.md`).
 
-## Tabla de deducción (spec §6.1)
+## Tabla de deducción
 
 | El usuario describe… | Tipo |
 |---|---|
@@ -21,13 +21,14 @@ su porqué**, como cualquier otra hipótesis de la entrevista
 | **exponer un endpoint HTTP dentro de Appian para que lo llame un sistema externo** | **Servlet** |
 
 Si lo que describe no encaja en ninguna fila —una pieza HTML/CSS/JS con React, o un
-Connected System— está fuera de la Fase 1: ver `## When to Use` en `SKILL.md`.
+Connected System— queda fuera de esta skill: ver `## When to Use` en `SKILL.md`.
 
 ## La fila que evita el error caro
 
 **«Quiero que al pulsar un botón se guarde algo en el sistema X» suena a Smart Service, y no
-lo es.** Es una **Function *writer***, y la razón es una regla dura de la plataforma: **los
-smart services de plug-in no se pueden usar en expresiones** (spec §2.2). Un smart service
+lo es.** Es una **Function *writer***, y la razón es una regla dura de la plataforma, escrita
+en la documentación de Appian: **los smart services de plug-in no se pueden usar en
+expresiones**. Un smart service
 solo se invoca desde un nodo de un modelo de proceso; si lo que hace falta es escribir datos
 **desde una interfaz**, la única vía sancionada es una función que:
 
@@ -97,5 +98,5 @@ empaquetado: el smart service generado **compila y pasa sus propios tests** perf
 bien. El error solo aparece al integrarlo, cuando resulta que no hay forma de invocarlo desde
 la interfaz que lo necesitaba — y para entonces ya se gastó un ciclo de construcción, o peor,
 un ciclo de aprobación de Appian. Es el ejemplo concreto de por qué la entrevista es el único
-sitio donde se comprueba que el plugin hace lo correcto (spec §9.1): no hay una segunda
-oportunidad de detectarlo más adelante.
+sitio donde se comprueba que el plugin hace lo correcto: no hay una segunda oportunidad de
+detectarlo más adelante.

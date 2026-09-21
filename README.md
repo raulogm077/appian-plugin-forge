@@ -9,6 +9,11 @@ verdad a la primera.
 
 Repositorio público: https://github.com/raulogm077/appian-plugin-forge
 
+Este README cubre requisitos, instalación, primer uso y solución de problemas. **Cómo funciona
+por dentro lo explica `docs/como-funciona.md`**: qué pasa en cada uno de los siete pasos, quién
+lo hace, las cuatro capas de verificación, cómo leer el certificado y lo que el sistema no puede
+comprobar. Si vas a generar un plug-in que alguien va a desplegar, léelo una vez entero.
+
 ## Para quién es y qué genera
 
 Para quien programa plug-ins de Appian en Java y trabaja con Claude Code. La entrevista y todos
@@ -44,9 +49,9 @@ No hace falta Node ni npm. En Windows, los comandos de la skill son de **bash** 
 traducción a PowerShell 5.1, con sus trampas, vive en
 `skills/crear-plugin-appian/referencias/entorno-windows.md`.
 
-Todo lo anterior se midió el 21-sep-2026 sobre un clon limpio del repositorio en Windows 11 con
-solo JDK 17, Python 3.11 y Git for Windows: la suite, el linter, los evals y una build en frío
-pasaron a la primera, también con espacios y `ñ` en las rutas.
+Está comprobado sobre un clon limpio del repositorio en Windows 11 con solo JDK 17, Python 3.11
+y Git for Windows instalados: la suite, el linter, los evals y una build en frío pasan a la
+primera, también con espacios y `ñ` en las rutas.
 
 ## Instalación
 
@@ -145,11 +150,20 @@ AppMarket sobre el bytecode, compilación más escáner de la API usada contra e
 tests, y empaquetado del JAR—; y tres agentes cierran lo que un script no puede:
 `appian-plugin-forge:appian-docs-researcher` (documentación de Appian: un hecho con su fuente),
 `appian-plugin-forge:plugin-compiler-fixer` (bucle compilar/corregir) y
-`appian-plugin-forge:plugin-contract-reviewer` (¿el código hace lo que dice el contrato?). Cada
-regla tiene identificador y fuente oficial en `assets/reglas-de-validacion.md`. El mapa completo,
-con diagramas y con lo que el sistema **no** puede comprobar, es `docs/como-funciona.md`; el porqué
-de cada decisión, en la spec `docs/superpowers/specs/2026-08-08-appian-plugin-forge-design.md`
-(repo de desarrollo; no viaja con el plugin).
+`appian-plugin-forge:plugin-contract-reviewer` (¿el código hace lo que dice el contrato?).
+
+Lo que hay que leer para entenderlo, y en qué orden:
+
+| Si quieres saber… | Está en |
+|---|---|
+| Qué pasa en cada paso, quién lo hace y con qué; las cuatro capas; los seis estados de una puerta; lo que **no** se puede comprobar | `docs/como-funciona.md` |
+| Por qué una regla rechaza algo, con su identificador y su fuente en la documentación de Appian | `assets/reglas-de-validacion.md` |
+| Cómo se lee la tabla del certificado y qué significa cada `STATUS` | `skills/crear-plugin-appian/referencias/certificado.md` |
+| Cómo se conduce la entrevista y qué campos admite el contrato | `skills/crear-plugin-appian/referencias/entrevista.md` |
+| Cómo se deduce el tipo de plug-in a partir de lo que pides | `skills/crear-plugin-appian/referencias/tipos-de-plugin.md` |
+| Las trampas de PowerShell y de la codificación en Windows | `skills/crear-plugin-appian/referencias/entorno-windows.md` |
+| El único fallo de build esperado, en servlets, y cómo se cierra | `skills/crear-plugin-appian/referencias/secsp-servlet.md` |
+| El procedimiento exacto que sigue Claude, paso a paso | `skills/crear-plugin-appian/SKILL.md` |
 
 ### Los dos perfiles
 
@@ -192,7 +206,7 @@ acentos sale deformada en Git Bash):
 
 | Comando | Qué es |
 |---|---|
-| `python -m pytest` | la suite: unos 630 tests en un par de minutos; fuera del repo de desarrollo saltan 4, y sin el proyecto de referencia del autor, otros 10 |
+| `python -m pytest` | la suite: unos 690 tests en un par de minutos; en un equipo que no es el del autor, 14 se saltan solos y dicen por qué |
 | `python scripts/skill_lint.py` | linter de la skill: frontmatter, secciones obligatorias y citas rotas |
 | `python scripts/run_evals.py` | evals de disparo de la skill; sin red ni API |
 | `python -m pytest -m e2e tests/test_humo_e2e.py -v -s` | humo de punta a punta: construye un proyecto real con Gradle, tarda minutos y necesita JDK 17 y red |
@@ -207,12 +221,11 @@ scripts que cita, el enlace al mapa y las órdenes de instalación.
 El forge es **MIT** (`LICENSE`; un test lo ata al manifiesto). Los plug-ins que genera llevan su
 propio `LICENSE`, también MIT por defecto y a nombre del `vendor` del contrato: es un valor por
 omisión del andamiaje, y el `THIRD_PARTY_NOTICES.md` generado lo dice. Las plantillas de Gradle
-derivan del `build.gradle` del proyecto de referencia —el smart service *Read EML*, publicado en
-el AppMarket bajo Apache-2.0—, y el derivado puede ser MIT porque el titular del copyright es el
-mismo: Apache-2.0 es la concesión de ese proyecto a terceros, no una atadura sobre su autor. El
-wrapper de Gradle es un redistribuible de Gradle Inc. Queda sin resolver que la guía de la que
-viene la estructura de las clases, `docs/AI Plugin Generator skill Support Guide.md` (repo de
-desarrollo; no viaja con el plugin), no declara licencia ni autor.
+derivan del `build.gradle` de un smart service del mismo autor publicado en el AppMarket bajo
+Apache-2.0, y el derivado puede ser MIT porque el titular del copyright es el mismo: Apache-2.0
+es la concesión de ese proyecto a terceros, no una atadura sobre su autor. El wrapper de Gradle
+es un redistribuible de Gradle Inc. La estructura de las clases generadas sigue una guía de uso
+interno que no declara licencia ni autor; queda dicho aquí por transparencia.
 
-Los cambios por fecha están en `CHANGELOG.md`. Si generaste un smart service antes del
-21-sep-2026, léelo: hay una corrección que afecta a lo ya generado.
+Los cambios por versión están en `CHANGELOG.md`. Cada entrada abre con lo que afecta a plug-ins
+ya generados, así que conviene leerlo al actualizar.

@@ -1,8 +1,8 @@
 # La excepción `SECSP` en un servlet recién andamiado
 
-Fuente: `SKILL.md` paso 4. Extraído del cuerpo
-principal en el cierre del ciclo 19 para bajar `SKILL.md` del tope de tamaño (hallazgo de
-`11-skill-reviewer.md:107`).
+El único fallo de build que un servlet recién andamiado tiene abierto a propósito, y los dos
+patrones de FindSecBugs y SpotBugs que llegan después al implementarlo; se abre desde el paso 4
+de `SKILL.md`.
 
 **La única excepción admitida al `BUILD SUCCESSFUL`, y no es una avería.** Un servlet recién
 andamiado **no pasa `./gradlew build`**. FindSecBugs dispara `SERVLET_PARAMETER` (`SECSP`) sobre
@@ -19,7 +19,7 @@ se lee allí, no se copia aquí. Lo que **no** se hace es excluir el detector pa
 ni relajar `reportLevel` ni `ignoreFailures` en `build.gradle`; y hasta que la decisión se tome, la
 puerta de SpotBugs del certificado sale en rojo, que es la verdad.
 
-Desde el 20-sep-2026, R-F14 lo comprueba: si la exclusión está **activa** y `docs/decisiones.md`
+`R-F14` lo comprueba: si la exclusión está **activa** y `docs/decisiones.md`
 no la menciona, la capa 1 sale en rojo. Activarla sigue siendo legítimo —es la decisión que este
 fichero describe—; lo que ya no se puede es tomarla en silencio.
 
@@ -38,12 +38,11 @@ verdad hay que devolver texto del cliente, se escapa antes, y eso sí es una exc
 justificar en `docs/decisiones.md`, con R-F14 mirando.
 
 **Hay un tercer camino, y es el que sirve cuando el cuerpo no es ninguno de los dos casos**
-—medido en una prueba E2E del 21-sep-2026, con un JSON de varios campos derivados—: **construirlo
-con `StringBuilder.append()` en pasos separados** en vez de con `+`, mismo contenido y mismo
+—un JSON con varios campos derivados del parámetro, por ejemplo—: **construirlo con
+`StringBuilder.append()` en pasos separados** en vez de con `+`, mismo contenido y mismo
 escapado. Eso rompe el rastro; lo que **no** basta es extraer el cálculo a otro método y devolver
 un objeto, porque FindSecBugs propaga la marca **al objeto entero** que devuelve un método con un
-parámetro tintado, no solo al campo que de verdad deriva de él. Se probó y falló antes de dar con
-lo de `StringBuilder`.
+parámetro tintado, no solo al campo que de verdad deriva de él.
 
 **Y un tercer patrón que no es de seguridad pero llega por el mismo sitio:**
 `SE_TRANSIENT_FIELD_NOT_RESTORED`, si el servlet guarda una colaboradora en un campo de instancia.

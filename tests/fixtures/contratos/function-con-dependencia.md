@@ -8,8 +8,7 @@ esa tabla en silencio y el andamiador no la ve; `contrato.py` lo rechaza.
 De aquí salen el `implementation` de `build.gradle`, la línea de
 `THIRD_PARTY_NOTICES.md` (que hay que cerrar a mano con la licencia real) y, vía
 el SBOM que genera el build, la capa de licencias (`R-L*`). La dependencia acaba
-dentro del JAR en `META-INF/lib`. Salió del primer ensayo con una dependencia
-real, el 21-sep-2026: libphonenumber, Apache-2.0.
+dentro del JAR en `META-INF/lib`. El ejemplo usa libphonenumber, que es Apache-2.0.
 
 ```toml
 dependencias = ["com.googlecode.libphonenumber:libphonenumber:9.0.39"]

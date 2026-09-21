@@ -1,10 +1,11 @@
 """Capa 4: empaquetado, cierre de dependencias y contenido del artefacto.
 
-Compilar y testear no dice nada de lo que finalmente se entrega. Traduccion a
-Python de verifyPluginJar del proyecto de referencia (build.gradle 232-252),
-para tener una sola herramienta en todas las capas.
+Compilar y testear no dice nada de lo que finalmente se entrega. Reproduce en
+Python, fuera de Gradle, las comprobaciones que la tarea `verifyPluginJar` de
+la plantilla hace sobre el JAR, para tener una sola herramienta en todas las
+capas.
 
-Lo que NO cubre, y se declara en el certificado (spec R13): la resolucion OSGi
+Lo que NO cubre, y se declara en el certificado: la resolucion OSGi
 real de la plataforma. El cierre de dependencias atrapa el fallo mas probable
 —una clase que falta— pero no un conflicto de versiones con lo que Appian ya
 carga.

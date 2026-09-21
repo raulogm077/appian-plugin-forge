@@ -1075,97 +1075,116 @@ def test_el_mapa_del_repositorio_no_cita_rutas_que_no_existen():
     assert rotas == [], f"{MAPA} cita rutas de este plugin que no existen: {rotas}"
 
 
-# --- La coletilla de lo que no viaja con el plugin --------------------------
+# --- La prosa que viaja habla del plugin, no de como se construyo -----------
 #
-# Aviso del ciclo 11 sobre `assets/reglas-de-validacion.md:3`, generalizado: ese
-# fichero citaba `docs/auditoria-guia-vs-documentacion-appian.md` SIN la
-# coletilla «repo de desarrollo» que llevan las otras cinco citas cruzadas.
-# Importa porque el fichero VIAJA --`/plugin install` copia el directorio
-# entero-- y su proposito es responder «por que me rechazas esto» con una
-# fuente oficial: quien tenga el plugin instalado sigue la cita y no encuentra
-# nada. El mismo defecto tenia el README en dos sitios mas, que el aviso no
-# nombraba y este barrido si encuentra.
+# Quien instala el plugin recibe el directorio entero, y nada mas: ni la spec,
+# ni la auditoria, ni la retrospectiva, ni los informes del gate, que viven en
+# el repositorio de desarrollo. Y tampoco necesita saber que paso mientras se
+# construia --que dia se midio algo, en que ciclo se encontro un defecto, que
+# agente lo cazo--. La documentacion que viaja explica QUE hace el plugin, COMO
+# y POR QUE, con la fuente primaria cuando la hay (la documentacion de Appian,
+# el SDK), y nada mas.
 #
-# La lista es de DOCUMENTOS DEL REPO DE DESARROLLO, no de `docs/` a secas: la
-# prosa cita ademas `docs/contrato.md`, `docs/CERTIFICADO.md` y otros cuatro que
-# son del PROYECTO GENERADO y donde la coletilla seria falsa. Va por prefijo
-# para que `docs/superpowers/specs/` cubra las dos specs sin listarlas.
+# Dos barridos, uno por familia de residuo. Los dos van sobre TODA la prosa que
+# viaja: `PROSA` mas el mapa, los dos assets de texto, el changelog y los tres
+# agentes. Deriva de `PROSA`, que deriva de `REFERENCIAS`: una referencia nueva
+# entra sola.
+#
+# La lista de documentos es de DOCUMENTOS DEL REPO DE DESARROLLO, no de `docs/`
+# a secas: la prosa cita ademas `docs/contrato.md`, `docs/CERTIFICADO.md` y
+# otros del PROYECTO GENERADO, que si existen para el lector. Va por prefijo
+# para que `docs/superpowers/specs/` cubra todas las specs sin listarlas.
 DOCS_DEL_REPO_DE_DESARROLLO = (
     "docs/superpowers/specs/",
     "docs/validaciones/",
     "docs/auditoria-guia-vs-documentacion-appian.md",
+    "docs/auditoria-politicas-appmarket-vs-forge.md",
     "docs/retrospectiva-fase1.md",
     "docs/AI Plugin Generator skill Support Guide.md",
 )
 
-# Lo que se exige es la parte PORTANTE de la coletilla --la que le dice al
-# lector que eso no esta en su copia--, no la frase entera: dos de las citas
-# vivas la escriben como prosa corriente («§1, repo de desarrollo»), y exigir el
-# literal completo obligaria a retorcerlas. La forma canonica y completa es
-# «(repo de desarrollo; no viaja con el plugin)», y es la que se escribe al
-# arreglar una.
-COLETILLA_DE_DESARROLLO = "repo de desarrollo"
-
-# La coletilla va DETRAS de la cita en todas las apariciones vivas, a veces
-# partida en dos lineas. La ventana es de caracteres y no de lineas por eso.
-VENTANA_COLETILLA = 200
-
-# Toda la prosa que viaja: `PROSA` mas el mapa y los dos assets de texto. Deriva
-# de `PROSA`, que a su vez deriva de `REFERENCIAS`: una referencia nueva entra
-# sola en este barrido.
-PROSA_QUE_VIAJA = (
-    *PROSA, MAPA, "CHANGELOG.md", "assets/reglas-de-validacion.md", "assets/dossier.md",
-)
-
-# El suelo, con la cita del hallazgo como ancla literal.
-CITA_ANCLA_DE_DESARROLLO = (
-    "assets/reglas-de-validacion.md",
-    "docs/auditoria-guia-vs-documentacion-appian.md",
-)
-SUELO_CITAS_DE_DESARROLLO = 8
-
 PATRON_CITA_DOCS = r"`(docs/[^`]+)`"
 
+# Narracion de desarrollo: cada familia es (patron, por que sobra, ejemplo que
+# TIENE que casar). El ejemplo es lo que impide que el barrido se ponga verde
+# estrechando un patron. La lista es explicita y se amplia a mano; lo que no
+# esta aqui no se vigila.
+NARRACION_DE_DESARROLLO = (
+    (r"\b\d{1,2}-(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)-20\d\d\b",
+     "fecha de una medicion o de un arreglo", "medido el 21-sep-2026 con el plugin cargado"),
+    (r"\b20\d\d-\d\d-\d\d\b", "fecha ISO", "spec 2026-08-08-appian-plugin-forge-design.md"),
+    (r"\bciclos? \d", "ciclo del gate de desarrollo", "Hasta el ciclo 12 ese caso producia"),
+    (r"\bgate\b", "el gate de ciclo es del desarrollo", "levantado por el gate"),
+    (r"\btanda\b", "tanda de pruebas del desarrollo", "en la tanda E2E del 20-sep"),
+    (r"\b[Mm]edido\b", "«medido el…» narra una medicion del desarrollo", "Medido el 19-sep-2026"),
+    (r"repo(sitorio)? de desarrollo", "el lector no lo tiene", "(repo de desarrollo; no viaja)"),
+    (r"proyecto de referencia", "es un plug-in privado del autor", "el proyecto de referencia lo trae"),
+    (r"Read EML", "es un plug-in privado del autor", "el smart service *Read EML*"),
+    (r"\bspec\b", "la spec no viaja", "lo que manda la spec §6.3"),
+    (r"[Aa]uditor[ií]a (§|S\d)", "la auditoria no viaja", "auditoría §7.4"),
+    (r"\bFase [123]\b", "hoja de ruta interna", "queda fuera de la Fase 1"),
+    (r"[Dd]ecisi[oó]n D\d", "numeracion de la spec", "decisión D16"),
+    (r"[Rr]iesgo R\d", "numeracion de la spec", "riesgo R13 de la spec"),
+    (r"\bE2E\b", "las pruebas E2E con agentes son del desarrollo", "una prueba E2E del 21-sep"),
+    (r"retrospectiva", "la retrospectiva no viaja", "la retrospectiva de la Fase 1"),
+)
 
-def test_lo_que_no_viaja_con_el_plugin_se_cita_diciendolo():
-    """Una cita a la spec o a la auditoria, desde dentro del plugin instalado.
+# El changelog va por fecha y version: sus fechas son suyas, no narracion.
+EXENTOS_DE_FECHA = {"CHANGELOG.md"}
+FAMILIAS_DE_FECHA = {NARRACION_DE_DESARROLLO[0][0], NARRACION_DE_DESARROLLO[1][0]}
 
-    Quien tiene el plugin instalado no tiene el repo de desarrollo: la spec, la
-    auditoria, la retrospectiva y los informes del gate no viajan. Citarlos sin
-    decirlo manda al lector a una ruta que en su copia no existe, y el sitio
-    donde mas duele es `assets/reglas-de-validacion.md`, cuyo trabajo es
-    responder con una fuente oficial por que una regla rechaza algo.
 
-    No se comprueba la EXISTENCIA de esos ficheros --no estan aqui, y exigirla
-    seria un rojo permanente--: se comprueba que la cita se declare.
+def _prosa_que_viaja():
+    agentes = sorted(p.relative_to(RAIZ).as_posix() for p in (RAIZ / "agents").glob("*.md"))
+    assert len(agentes) == 3, agentes
+    return (
+        *PROSA, MAPA, "CHANGELOG.md", "assets/reglas-de-validacion.md", "assets/dossier.md",
+        *agentes,
+    )
+
+
+def test_la_prosa_que_viaja_no_cita_documentos_que_no_viajan():
+    """Ninguna cita a la spec, la auditoria, la retrospectiva o la guia.
+
+    No se comprueba la EXISTENCIA de esos ficheros --no estan aqui--: se
+    comprueba que la prosa no mande al lector a ellos. Cuando una afirmacion
+    salia de uno, se reescribe el HECHO en el sitio, no el puntero.
     """
-    vistas = []
-    sin_coletilla = []
-    for fichero in PROSA_QUE_VIAJA:
+    citas = []
+    for fichero in _prosa_que_viaja():
         texto = _texto(fichero)
         for m in re.finditer(PATRON_CITA_DOCS, texto):
-            citado = m.group(1)
-            if not citado.startswith(DOCS_DEL_REPO_DE_DESARROLLO):
-                continue
-            vistas.append((fichero, citado))
-            # El blanco se normaliza antes de buscar: la coletilla se parte por
-            # el salto de linea en dos de las citas vivas («del repo\nde
-            # desarrollo»), y sin esto serian dos falsos positivos. Medido.
-            ventana = re.sub(r"\s+", " ", texto[m.end() : m.end() + VENTANA_COLETILLA])
-            if COLETILLA_DE_DESARROLLO not in ventana:
+            if m.group(1).startswith(DOCS_DEL_REPO_DE_DESARROLLO):
                 linea = texto[: m.start()].count("\n") + 1
-                sin_coletilla.append(f"{fichero}:{linea} cita `{citado}`")
+                citas.append(f"{fichero}:{linea} cita `{m.group(1)}`")
+    assert citas == [], (
+        "prosa que viaja con el plugin y cita material que NO viaja:\n  " + "\n  ".join(citas)
+    )
 
-    assert CITA_ANCLA_DE_DESARROLLO in vistas, (
-        f"el barrido ya no ve la cita del hallazgo {CITA_ANCLA_DE_DESARROLLO}: vio {vistas}"
-    )
-    assert len(vistas) >= SUELO_CITAS_DE_DESARROLLO, (
-        f"solo se vieron {len(vistas)} citas al repo de desarrollo; un barrido que "
-        f"adelgaza se pone verde solo"
-    )
-    assert sin_coletilla == [], (
-        "prosa que viaja con el plugin y cita material que NO viaja, sin decirlo:\n  "
-        + "\n  ".join(sin_coletilla)
+
+def test_la_prosa_que_viaja_no_narra_el_desarrollo():
+    """Sin fechas de medicion, ciclos, tandas ni numeracion de la spec.
+
+    Lo que era evidencia para quien construia el plugin --«medido el…», «lo
+    cazo un agente en la tanda…»-- es ruido para quien lo usa: al lector le
+    hace falta la regla o el porque, en presente. Cada familia lleva un
+    ejemplo que tiene que casar, para que el barrido no se pueda poner verde
+    estrechando el patron.
+    """
+    for patron, _, ejemplo in NARRACION_DE_DESARROLLO:
+        assert re.search(patron, ejemplo), f"el patron {patron!r} ya no casa su ejemplo {ejemplo!r}"
+
+    residuos = []
+    for fichero in _prosa_que_viaja():
+        texto = _texto(fichero)
+        for patron, motivo, _ in NARRACION_DE_DESARROLLO:
+            if fichero in EXENTOS_DE_FECHA and patron in FAMILIAS_DE_FECHA:
+                continue
+            for m in re.finditer(patron, texto):
+                linea = texto[: m.start()].count("\n") + 1
+                residuos.append(f"{fichero}:{linea} «{m.group(0)}» ({motivo})")
+    assert residuos == [], (
+        "prosa que viaja con el plugin y narra el desarrollo:\n  " + "\n  ".join(residuos)
     )
 
 

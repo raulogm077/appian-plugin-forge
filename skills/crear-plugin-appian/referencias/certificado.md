@@ -76,8 +76,7 @@ file or directory») y no se construye nada.
 build` —lo más normal del mundo cuando algo huele raro— borra el directorio con la evidencia
 dentro, y el certificado que venga después dirá que la salida no consta y bajará a `NOT_READY`.
 Falla cerrado, que es lo correcto, pero cuesta una pasada entera: si hay que limpiar, se limpia y
-**luego** se captura, nunca las dos cosas en el mismo comando. Lo pagó una de las pruebas E2E del
-20-sep-2026.
+**luego** se captura, nunca las dos cosas en el mismo comando.
 
 **En PowerShell 5.1 ese comando no vale, y no es el único del pipeline que hay que traducir** —ni
 el `&&`, ni el marcador de la raíz del plugin cuando llega literal en las líneas ejecutables que
@@ -156,7 +155,8 @@ van más abajo—. De esas once, este script ejecuta **seis** por invocación di
 capa 1, la de superficie y la de empaquetado (capa 4, sobre el JAR ya construido)—, resuelve
 **cuatro** **leyendo la salida real de `./gradlew build`**, no dándolas por buenas, y la undécima
 —«Deriva contra la versión del entorno»— es **informativa**: no la ejecuta nadie, no bloquea, y
-declara en su propia fila que es insumo de la Fase 3. La capa 4 solo se puede
+declara en su propia fila que es insumo de una futura migración de versión, que esta skill no
+hace. La capa 4 solo se puede
 correr sobre un JAR: si no hay ninguno en `build/libs`, su puerta sale **roja**, no pendiente — no
 poder mirar el artefacto es lo mismo que analizar cero clases, y allí también es rojo.
 
@@ -182,9 +182,9 @@ mkdir -p build && ./gradlew build releaseCheck --console=plain > build/salida-bu
 `build` sigue haciendo falta al lado: `releaseCheck` no arrastra `assemble`, y sin JAR en
 `build/libs` la capa 4 sale roja. Y `verificarRevisionGit` **exige un worktree de git limpio**, así
 que esto va después del commit del slice, no antes: con cambios sin commitear el comando falla
-entero y ninguna de las tres puertas llega a ejecutarse. Medido el 19-sep-2026: de dos pruebas E2E
-con contrato RIGUROSO, las dos capturaron el log con un `./gradlew build` a secas y las dos se
-quedaron con `NOT_READY` y tres filas «ese comando no se ejecutó», sin saber qué comando faltaba.
+entero y ninguna de las tres puertas llega a ejecutarse. Capturar el log con un `./gradlew build`
+a secas deja esas tres filas en «ese comando no se ejecutó» y el certificado en `NOT_READY`, sin
+que la tabla diga qué comando faltaba: por eso el comando está aquí.
 
 **La fila de PIT se llama por su umbral de mutación, pero PIT mide DOS cosas y las dos la
 bloquean**: `mutationThreshold = 85` y su **propia** cobertura de línea, `coverageThreshold = 90`,
@@ -192,7 +192,7 @@ que no es la de JaCoCo de la fila de al lado —PIT solo cuenta las líneas de l
 Sobre una clase pequeña eso muerde antes que la mutación: un constructor privado de utilidad, que
 nadie invoca, basta para dejar la cobertura de PIT por debajo de 90 con JaCoCo al 100 %. El fallo
 se lee `Line coverage of N is below threshold of 90` en `:pitest`, y se cierra **cubriendo** esa
-línea, nunca bajando el umbral. Medido el 20-sep-2026.
+línea, nunca bajando el umbral.
 
 **La de build reproducible no llega a verde nunca, y es a propósito.** La plantilla lo *configura*
 —`preserveFileTimestamps = false`, `reproducibleFileOrder = true`— pero ninguna tarea lo

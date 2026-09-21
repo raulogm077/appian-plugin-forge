@@ -1,7 +1,8 @@
 # Formato de la entrevista
 
-Fuente: spec `docs/superpowers/specs/2026-08-08-appian-plugin-forge-design.md` §6.1, §6.2 y
-§6.4 (repo de desarrollo; no viaja con el plugin).
+Cómo se conduce la entrevista del paso 1 de `SKILL.md`: el formato de cada turno, la doble
+puerta de parada, el reparto entre lo que se pregunta y lo que se decide, y las siete preguntas
+de admisión.
 
 ## Una pregunta por turno, sin opción múltiple
 
@@ -68,8 +69,8 @@ se enseña todo lo demás.**
 | `entradas`/`salidas`: `tipo_java` | **Decidido** | Del sentido del dato. Ojo con los no inferibles (`R-F04`) y con `Timestamp`/`Time` |
 | `entradas[].required` | **Decidido, confirmado** | Se propone `ALWAYS` salvo que el usuario haya dicho que el dato puede faltar. Un primitivo no admite `OPTIONAL` (`R-F02`) |
 | `descripcion` de cada uno | **Decidido** | Se redacta y se enseña: acaba en el `.properties` que ve el diseñador |
-| `servlet.url_pattern`, `servlet.parametro` | **Decidido** | **Solo en `tipo = servlet`**, y los nombres son exactamente esos —`url_pattern` con guion bajo—. `url_pattern` es la ruta que declara el manifiesto (`/lo-que-sea`); `parametro`, el nombre del parámetro de petición que lee el andamiaje. Nadie los documentaba y había que sacarlos leyendo `andamiar.py`: lo dijo una prueba E2E del 21-sep-2026 |
-| `dependencias` | **Decidido, confirmado** | Solo si la respuesta a «¿usa librerías de terceros?» es sí: una lista de coordenadas Maven, `dependencias = ["grupo:artefacto:versión"]`, con la versión concreta comprobada en Maven Central. **Es clave de raíz del TOML y va en la primera línea del bloque, antes de `[plugin]`**: escrita después de cualquier tabla, TOML la cuelga de esa tabla y el andamiador no la ve —`contrato.py` lo rechaza desde el 21-sep-2026—. De ahí salen el `implementation` de `build.gradle`, la línea de `THIRD_PARTY_NOTICES.md` y, vía el SBOM, la capa de licencias. El ejemplo canónico es `tests/fixtures/contratos/function-con-dependencia.md` |
+| `servlet.url_pattern`, `servlet.parametro` | **Decidido** | **Solo en `tipo = servlet`**, y los nombres son exactamente esos —`url_pattern` con guion bajo—. `url_pattern` es la ruta que declara el manifiesto (`/lo-que-sea`); `parametro`, el nombre del parámetro de petición que lee el andamiaje |
+| `dependencias` | **Decidido, confirmado** | Solo si la respuesta a «¿usa librerías de terceros?» es sí: una lista de coordenadas Maven, `dependencias = ["grupo:artefacto:versión"]`, con la versión concreta comprobada en Maven Central. **Es clave de raíz del TOML y va en la primera línea del bloque, antes de `[plugin]`**: escrita después de cualquier tabla, TOML la cuelga de esa tabla y el andamiador no la ve —la puerta determinista lo rechaza con una `FALTA` que dice la posición—. De ahí salen el `implementation` de `build.gradle`, la línea de `THIRD_PARTY_NOTICES.md` y, vía el SBOM, la capa de licencias. El ejemplo canónico es `tests/fixtures/contratos/function-con-dependencia.md` |
 | Las seis de admisión y la séptima | **PREGUNTADO** | Son la tabla de abajo |
 
 ### Las subpaletas que existen (`clase.paleta`)
@@ -114,12 +115,11 @@ del nombre de la clase en minúsculas (`contrato.nombre_funcion`)—, no del bun
 fichero puede acabar llamándose `registrarAuditoria_en_US.properties` mientras la función se
 invoca como `registrarauditoriafunction(...)`. Ninguna capa lo marca porque ninguna de las dos
 cosas está mal por separado; si se quieren iguales, se declara `[funcion] nombre` con el mismo
-valor. Lo cazó un agente en la tanda E2E del 20-sep-2026, contra esta misma referencia, que
-hasta entonces prometía lo contrario para los tres tipos.
+valor.
 
-Sin él salía `key=""` y un fichero llamado `_en_US.properties`, y ninguna de las cuatro capas
-lo veía: el validador de bundles derivaba la ruta esperada del **mismo dato vacío** que había
-producido el artefacto roto, así que los dos lados coincidían en la nada.
+Por qué bloquea la puerta: sin él saldría `key=""` y un fichero llamado `_en_US.properties`, y
+ninguna de las cuatro capas lo vería, porque el validador de bundles deriva la ruta esperada del
+**mismo dato** que produce el artefacto, así que los dos lados coincidirían en la nada.
 
 ### Qué llevan de más los contratos canónicos
 
@@ -171,7 +171,9 @@ RIGUROSO por tecnicismo, que es como un perfil deja de significar nada.
 
 **¿Es una versión nueva de un plug-in que ya está desplegado?** Si lo es, y cambian inputs u
 outputs, hace falta **clave nueva**, clase o paquete distintos, y deprecar el anterior:
-sobrescribir la clave puede **romper procesos vivos en producción** (auditoría §7.4). Es la
+sobrescribir la clave puede **romper procesos vivos en producción**. Lo dice la documentación
+de Appian (*Smart Service Plug-ins › Best practices › Upgrading*): «You must use a new key. If
+you overwrite the plug-in, existing nodes may fail». Es la
 única regla del proyecto cuya consecuencia cae sobre producción y no sobre el despliegue, y
 solo es comprobable porque el dossier de una versión anterior guarda la firma pública
 congelada contra la que comparar.
@@ -200,9 +202,8 @@ parece que hay línea base y no la hay.
 
 ## El bloque `[confirmacion]`
 
-Nuevo desde el 18-sep-2026 (spec `2026-09-18-confirmacion-entrevista-y-documentacion-usuario-design.md`,
-capacidad B). La puerta de confianza de arriba —el «sí» explícito— ahora tiene un mecanismo, no
-solo una convención: `contrato.validar()` exige
+La puerta de confianza de arriba —el «sí» explícito— tiene un mecanismo, no solo una
+convención: `contrato.validar()` exige
 
 ```toml
 [confirmacion]
@@ -215,5 +216,5 @@ después de todos los demás.
 
 **Si el contrato se edita después de escribir este bloque** —una corrección, un campo que
 cambia—, hay que volver a pedir confirmación y reescribirlo. El campo es un booleano simple, no un
-hash del contenido (decisión E1 de la spec): no detecta por sí solo que el contrato cambió bajo
-él, así que la garantía depende de seguir esta regla, no solo de que el campo exista.
+hash del contenido: no detecta por sí solo que el contrato cambió bajo él, así que la garantía
+depende de seguir esta regla, no solo de que el campo exista.

@@ -6,12 +6,9 @@ que NO emite `requireNonNull` y en su lugar escribe el `if (x == null)` con el
 `LOG.debug` del nombre del campo -- la unica rama de `construir_variables` que
 la forma minima no toca.
 
-(Aqui hubo primero un marcador de relleno, y luego una prosa que decia que este
-fichero llevaba ademas `plugin.descripcion`. Era al reves: quien la lleva es
-`smart-service-minimo.md`. Lo cazaron DOS lentes del gate del ciclo 5 por
-separado, una como VACUA y otra como [baja], y el ciclo salio NO APTO por ello.
-Se deja escrito porque la skill manda leer esta prosa para saber que distingue
-a cada fixture: una prosa que miente aqui es peor que ninguna.)
+(Ojo: `plugin.descripcion` NO la lleva este fichero sino `smart-service-minimo.md`.
+La skill manda leer esta prosa para saber que distingue a cada fixture, asi que
+lo que dice aqui tiene que ser exacto: una prosa que miente es peor que ninguna.)
 
 ```toml
 [plugin]

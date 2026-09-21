@@ -6,7 +6,7 @@ RFC 5322/MIME EML almacenados en Appian y expone su contenido — remitente,
 destinatarios, cuerpo, adjuntos, cabeceras — como salidas del proceso.
 
 Sirve de oraculo de verdad para esta bateria: los valores de abajo estan
-leidos directamente de `C:\Users\rgmoya\Documents\Plugin Read EML (Codex)`
+leidos directamente del codigo fuente de ese plug-in
 (`src/main/resources/appian-plugin.xml`, el bundle
 `readEmailFile_en_US.properties` y los setters/getters de
 `ReadEmailFileSmartService.java`), no inventados. El `required` de cada

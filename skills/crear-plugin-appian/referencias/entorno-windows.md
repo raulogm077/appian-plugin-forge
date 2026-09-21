@@ -1,8 +1,8 @@
 # Trampas de PowerShell en esta skill
 
-Fuente: `SKILL.md` pasos 1 y 4. Extraído del cuerpo
-principal en el cierre del ciclo 19 para bajar `SKILL.md` del tope de tamaño (hallazgo de
-`11-skill-reviewer.md:107`).
+Las trampas de PowerShell que afectan a los pasos 1, 4 y 5 de `SKILL.md` —el marcador de la raíz
+del plugin, la localización del JAR del SDK y la captura del build—; se abre desde esos pasos
+cuando el shell es PowerShell.
 
 Dos trampas distintas, y las dos comparten el mismo patrón: **fallan en silencio**, con un mensaje
 que se lee como «la clase/ruta no existe» en vez de «esto es sintaxis de PowerShell, no de bash».
@@ -12,15 +12,14 @@ que se lee como «la clase/ruta no existe» en vez de «esto es sintaxis de Powe
 `${NOMBRE}` es sintaxis de variable **de PowerShell**: el marcador `CLAUDE_PLUGIN_ROOT` pegado tal
 cual en un comando se expande a **cadena vacía sin avisar** — `python /scripts/contrato.py`, que
 falla por una ruta que nadie escribió. Y traducirlo a `$env:CLAUDE_PLUGIN_ROOT` **no arregla
-nada**: Claude Code no define esa variable de entorno (`printenv` la devuelve vacía, medido el
-21-sep-2026 con el plugin cargado). Lo que hace es **sustituir el marcador por la ruta absoluta
-del plugin al cargar `SKILL.md`**, así que con el plugin cargado los comandos de la skill ya
-llegan con la ruta puesta. Donde el marcador aparezca literal —trabajando dentro del repo del
-forge sin cargarlo, o en una referencia como esta abierta con `Read`— se escribe la ruta
-absoluta del plugin, entre comillas dobles porque puede llevar espacios: la misma que muestra
-`SKILL.md` cargado, o la raíz del checkout. Hasta el 21-sep-2026 este párrafo mandaba usar
-`$env:CLAUDE_PLUGIN_ROOT`; se había medido con la variable puesta **a mano**, que no es el caso
-de nadie que instale el plugin.
+nada**: Claude Code no define esa variable de entorno, ni con el plugin cargado. Lo que hace es
+**sustituir el marcador por la ruta absoluta del plugin al cargar `SKILL.md`**, así que con el
+plugin cargado los comandos de la skill ya llegan con la ruta puesta. Donde el marcador aparezca
+literal —trabajando dentro del repo del forge sin cargarlo, o en una referencia como esta abierta
+con `Read`— se escribe la ruta absoluta del plugin, entre comillas dobles porque puede llevar
+espacios: la misma que muestra `SKILL.md` cargado, o la raíz del checkout. Que
+`$env:CLAUDE_PLUGIN_ROOT` parezca funcionar en una sesión es porque alguien la puso **a mano**,
+que no es el caso de nadie que instale el plugin.
 
 Esto vale para **todas** las apariciones del marcador en `SKILL.md`, no solo la del paso 1.
 
@@ -85,13 +84,13 @@ New-Item -ItemType Directory -Force build
 ```
 
 La redirección va **dentro de `cmd`** a propósito, y el motivo es de fidelidad, no de veredicto.
-Conviene decirlo con precisión porque es la tercera redacción de este párrafo: las dos anteriores
-prometían un daño que al medirlo no aparecía. Capturado un fallo real de Gradle de las dos formas
-y pasados los dos logs por el lector, **el resultado es el mismo** —`fallido`, con el mismo
-motivo—. Hoy no hay ningún veredicto que se pierda por capturar con PowerShell.
+Conviene decirlo con precisión, porque es fácil prometer un daño que no existe: capturado un
+fallo real de Gradle de las dos formas y pasados los dos logs por el lector, **el resultado es el
+mismo** —`fallido`, con el mismo motivo—. Hoy no hay ningún veredicto que se pierda por capturar
+con PowerShell.
 
 Lo que sí se pierde es que el log **sea copia de lo que Gradle escribió**. PowerShell transforma
-lo que le llega por stderr de dos maneras, las dos medidas: envuelve la **primera** línea en un
+lo que le llega por stderr de dos maneras: envuelve la **primera** línea en un
 `ErrorRecord` y la escribe prefijada con el nombre del ejecutable, y **refluye todas** las líneas
 al ancho de la consola —una de 250 caracteres salió partida en tres—. `cmd` no toca nada.
 
@@ -120,8 +119,7 @@ hace que SpotBugs **descarte el filtro entero** —*«Unable to read filter … 
 in prolog»*— y **siga con `BUILD SUCCESSFUL`**. Tus exclusiones dejan de aplicarse y el build no
 lo dice: ves hallazgos que creías excluidos. **No es que SpotBugs esté roto**, y la salida no es
 saltarse la puerta con `-x spotbugsMain`: es reescribir el fichero sin BOM. `R-F14` lo detecta y
-lo nombra, porque el síntoma lleva al diagnóstico contrario — pasó en una prueba E2E real del
-21-sep-2026.
+lo nombra, porque el síntoma lleva al diagnóstico contrario.
 
 Y el pariente peor: **`>` en PowerShell 5.1 escribe UTF-16LE**. Un `contrato.md`, un
 `exclude.xml`, un `decisiones.md` o un `.properties` escritos así no son UTF-8, y los scripts lo
