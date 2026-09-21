@@ -762,6 +762,19 @@ def _error_de_identificador(valor: str, cualificado: bool) -> str | None:
 
 PATRON_BLOQUE_TOML = re.compile(r"```toml\s*\n(.*?)\n```", re.DOTALL)
 
+# Lo que `validar` exige que sea CADENA, seccion a seccion. Las listas
+# (`entradas`, `salidas`) se comprueban campo a campo en su propio bucle.
+CAMPOS_QUE_SON_CADENA = (
+    ("plugin", ("key", "nombre", "version", "paquete", "tipo", "perfil",
+                "application_version_min", "descripcion", "vendor")),
+    ("clase", ("nombre", "paleta")),
+    ("bundle", ("nombre",)),
+    ("funcion", ("nombre",)),
+)
+
+# `26.3`, `24.1`, `26.3.1`: digitos separados por puntos, al menos un punto.
+PATRON_VERSION_APPIAN = re.compile(r"\d+(\.\d+)+")
+
 
 def extraer_toml(texto_md: str) -> dict:
     # Se normalizan los finales de linea antes de casar: el repositorio esta en
@@ -775,8 +788,64 @@ def extraer_toml(texto_md: str) -> dict:
     return tomllib.loads(coincidencia.group(1))
 
 
+class TextoIlegible(ValueError):
+    """Un fichero de texto que no se puede leer como UTF-8, dicho en castellano.
+
+    Nace el 21-sep-2026 de una prueba adversaria: un `contrato.md`, un
+    `exclude.xml` o un `.properties` guardados desde PowerShell 5.1 con `>`
+    salen en UTF-16, y cada script moria con `UnicodeDecodeError: 'utf-8'
+    codec can't decode byte 0xff`, que no le dice a nadie que hacer.
+    """
+
+
+class ContratoIlegible(TextoIlegible):
+    """El contrato no se pudo ni abrir: no existe, no es UTF-8, esta vacio, no
+    trae bloque toml o el TOML no parsea. Distinto de `validar()`, que juzga un
+    contrato que SI se leyo."""
+
+
+def leer_utf8(ruta: pathlib.Path) -> str:
+    """`read_text(encoding="utf-8")` con diagnostico. NO quita el BOM UTF-8:
+    quien lo necesite ver (R-F14 sobre `exclude.xml`) lo ve."""
+    ruta = pathlib.Path(ruta)
+    if ruta.is_dir():
+        raise TextoIlegible(f"{ruta} es un directorio, no un fichero")
+    if not ruta.is_file():
+        raise TextoIlegible(f"no existe {ruta}")
+    crudo = ruta.read_bytes()
+    if crudo[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        raise TextoIlegible(
+            f"{ruta} esta guardado en UTF-16 --es lo que escribe `>` en PowerShell 5.1--: "
+            f"reescribelo en UTF-8 (desde el editor, o con `Out-File -Encoding utf8`)"
+        )
+    try:
+        return crudo.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise TextoIlegible(
+            f"{ruta} no esta en UTF-8 (byte {error.start} no valido): reescribelo en UTF-8"
+        ) from None
+
+
 def cargar(ruta: pathlib.Path) -> dict:
-    return extraer_toml(ruta.read_text(encoding="utf-8"))
+    ruta = pathlib.Path(ruta)
+    try:
+        texto = leer_utf8(ruta)
+    except TextoIlegible as error:
+        raise ContratoIlegible(str(error)) from None
+    if not texto.strip():
+        raise ContratoIlegible(f"{ruta} esta vacio")
+    try:
+        return extraer_toml(texto)
+    except tomllib.TOMLDecodeError as error:
+        # `TOMLDecodeError` es un `ValueError`: va antes que la rama generica.
+        raise ContratoIlegible(
+            f"el bloque toml de {ruta} no es TOML valido: {error}"
+        ) from None
+    except ValueError as error:
+        raise ContratoIlegible(
+            f"{ruta}: {error}; el contrato lleva su TOML en un bloque que empieza por "
+            f"```toml y termina por ```"
+        ) from None
 
 
 def capacidades_exigentes(capacidades: dict) -> list[str]:
@@ -930,17 +999,76 @@ def validar(datos: dict) -> list[str]:
 
     faltantes += _validar_confirmacion(datos)
 
+    # CADENAS, no solo presentes. `application_version_min = 26` sin comillas
+    # es un entero para TOML: pasaba esta puerta y mataba a `andamiar.py` con
+    # un `TypeError` en `sustituir`; `key = 123` mataba aqui mismo, en el
+    # `fullmatch` de abajo. Y `sale_a_la_red = "no"` es una cadena no vacia,
+    # o sea VERDADERO: proponia RIGUROSO por un «no». Prueba adversaria del
+    # 21-sep-2026, casos 05 y 18d.
+    for nombre_seccion, campos in CAMPOS_QUE_SON_CADENA:
+        for campo in campos:
+            valor = seccion(datos, nombre_seccion).get(campo)
+            if valor is not None and not isinstance(valor, str):
+                faltantes.append(
+                    f"{nombre_seccion}.{campo}: debe ir entre comillas; sin ellas TOML lo lee "
+                    f"como {type(valor).__name__} y el andamiador no puede escribirlo"
+                )
+    # `dependencias` es clave de RAIZ del TOML. Escrita despues de `[[salidas]]`
+    # --o de cualquier otra tabla--, TOML la cuelga en silencio de la ultima
+    # tabla abierta: el contrato daba «OK contrato completo», `build.gradle`
+    # salia sin ningun `implementation` y el fallo aparecia en `compileJava`,
+    # lejos de la causa. Lo encontro el primer ensayo con una dependencia real
+    # (libphonenumber, 21-sep-2026).
+    extraviadas = [
+        f"{nombre}[{i}]" for nombre in ("entradas", "salidas")
+        for i, campo in enumerate(datos.get(nombre, []))
+        if isinstance(campo, dict) and "dependencias" in campo
+    ] + [
+        nombre for nombre, valor in datos.items()
+        if isinstance(valor, dict) and "dependencias" in valor
+    ]
+    if extraviadas:
+        faltantes.append(
+            f"dependencias: aparece dentro de {', '.join(extraviadas)} y tiene que ir en la RAIZ "
+            f"del bloque toml, ANTES de `[plugin]`; escrita despues de una tabla, TOML la cuelga "
+            f"de esa tabla y el andamiador no la ve"
+        )
+
+    for clave, valor in seccion(datos, "capacidades").items():
+        if not isinstance(valor, bool):
+            faltantes.append(
+                f"capacidades.{clave}: debe ser true o false sin comillas; "
+                f"«{valor}» cuenta como verdadero y sube el perfil"
+            )
+    avm = plugin.get("application_version_min")
+    if isinstance(avm, str) and not PATRON_VERSION_APPIAN.fullmatch(avm):
+        faltantes.append(
+            f"plugin.application_version_min: «{avm}» no tiene forma de version de Appian "
+            f"(p. ej. 26.3): va tal cual al manifiesto y Appian no lo aceptaria"
+        )
+
     # Bien formados, no solo presentes. Los tres viajan al `.java`, al
     # manifiesto y a la RUTA de los ficheros generados: `paquete` se convierte
     # en directorios y `key` en la ruta del bundle (`key.replace('.', '/')`).
-    for ruta_campo, valor, cualificado in (
+    # Y desde el 21-sep-2026, tambien los nombres de entradas, salidas y de la
+    # funcion: `andamiar.py` los escribe VERBATIM en `@Parameter String <nombre>`,
+    # en `<function key>` y en las claves del bundle, y `nom bre` o
+    # `nombre;System.exit(0);String x` pasaban la puerta y fallaban en javac o
+    # en SAIL, justo lo que esta puerta existe para adelantar.
+    identificadores = [
         ("plugin.paquete", plugin.get("paquete"), True),
         ("plugin.key", plugin.get("key"), True),
         ("clase.nombre", seccion(datos, "clase").get("nombre"), False),
         ("bundle.nombre", seccion(datos, "bundle").get("nombre"), False),
-    ):
-        if not valor:
-            continue  # la ausencia ya la reporta su propia comprobacion
+        ("funcion.nombre", seccion(datos, "funcion").get("nombre"), False),
+    ]
+    for lista in ("entradas", "salidas"):
+        for i, campo in enumerate(datos.get(lista, [])):
+            if isinstance(campo, dict):
+                identificadores.append((f"{lista}[{i}].nombre", campo.get("nombre"), False))
+    for ruta_campo, valor, cualificado in identificadores:
+        if not valor or not isinstance(valor, str):
+            continue  # la ausencia y el tipo ya los reporta su propia comprobacion
         problema = _error_de_identificador(valor, cualificado)
         if problema:
             faltantes.append(f"{ruta_campo}: {problema}")
@@ -980,7 +1108,12 @@ def validar(datos: dict) -> list[str]:
         for campo in ("nombre", "tipo_java", "descripcion"):
             if not entrada.get(campo):
                 faltantes.append(f"entradas[{i}].{campo}")
-        if entrada.get("tipo_java") and tipo_java_emitible(entrada["tipo_java"]) is None:
+            elif not isinstance(entrada[campo], str):
+                faltantes.append(
+                    f"entradas[{i}].{campo}: debe ir entre comillas; sin ellas TOML lo lee "
+                    f"como {type(entrada[campo]).__name__}"
+                )
+        if isinstance(entrada.get("tipo_java"), str) and tipo_java_emitible(entrada["tipo_java"]) is None:
             faltantes.append(
                 f"entradas[{i}].tipo_java: «{entrada['tipo_java']}» no es un nombre de tipo Java "
                 f"de java.lang ni viene cualificado; el .java no compilaria. Un tipo es "
@@ -1058,7 +1191,12 @@ def validar(datos: dict) -> list[str]:
         for campo in ("nombre", "tipo_java", "descripcion"):
             if not salida.get(campo):
                 faltantes.append(f"salidas[{i}].{campo}")
-        if salida.get("tipo_java") and tipo_java_emitible(salida["tipo_java"]) is None:
+            elif not isinstance(salida[campo], str):
+                faltantes.append(
+                    f"salidas[{i}].{campo}: debe ir entre comillas; sin ellas TOML lo lee "
+                    f"como {type(salida[campo]).__name__}"
+                )
+        if isinstance(salida.get("tipo_java"), str) and tipo_java_emitible(salida["tipo_java"]) is None:
             faltantes.append(
                 f"salidas[{i}].tipo_java: «{salida['tipo_java']}» no es un nombre de tipo Java "
                 f"de java.lang ni viene cualificado; el .java no compilaria. Un tipo es "
@@ -1146,7 +1284,13 @@ def main() -> int:
     if len(sys.argv) != 2:
         print("uso: contrato.py <ruta-al-contrato.md>")
         return 2
-    datos = cargar(pathlib.Path(sys.argv[1]))
+    try:
+        datos = cargar(pathlib.Path(sys.argv[1]))
+    except ContratoIlegible as error:
+        # Codigo 2, como el uso incorrecto: no hubo contrato que juzgar. El 1
+        # queda para «se leyo y le falta algo».
+        print(f"ERROR contrato: {error}")
+        return 2
     faltantes = validar(datos)
     if faltantes:
         for f in faltantes:

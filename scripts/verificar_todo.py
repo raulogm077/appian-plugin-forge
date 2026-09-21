@@ -1188,8 +1188,26 @@ def _evidencia(stdout: str, stderr: str, estado: str) -> str:
 
 
 def main() -> int:
+    # La consola no decide el veredicto. El certificado se escribe en UTF-8 y
+    # lo que se imprime despues es un eco; pero con una pagina de codigos que no
+    # tenga algun caracter del markdown --cp850 no tiene el `—` de las filas--
+    # ese eco moria con traza y exit 1 DESPUES de haber escrito el fichero: el
+    # usuario veia un reventon sobre un certificado correcto. Medido el
+    # 21-sep-2026 sobre un clon limpio forzando `PYTHONIOENCODING=cp850:strict`.
+    # Un `?` en la consola es tolerable; un traceback sobre un veredicto
+    # valido, no. El fichero, que es la evidencia, no cambia.
+    for flujo in (sys.stdout, sys.stderr):
+        if hasattr(flujo, "reconfigure"):
+            flujo.reconfigure(errors="replace")
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("raiz", nargs="?", default=".")
+    # `raiz` es OBLIGATORIA. Hasta el 21-sep-2026 admitia `nargs="?"` con el
+    # cwd por defecto, y ejecutar el script sin argumentos desde la raiz del
+    # plugin escribia un `docs/CERTIFICADO.md` DENTRO del propio forge: un
+    # certificado de nada, en el sitio equivocado, sin que nadie lo pidiera.
+    # La orden de la skill lleva siempre la raiz; quien no la escribe se
+    # equivoca, y argparse se lo dice con el uso antes de tocar el disco.
+    parser.add_argument("raiz", help="raiz del proyecto generado que se verifica")
     # Sin `default`: el defecto lo aplica `_resolver_perfil`, que es quien
     # escribe la nota y necesita distinguir «se pidio estandar» de «no se
     # pidio nada». Argparse rellenandolo borraba esa diferencia.

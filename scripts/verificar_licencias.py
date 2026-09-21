@@ -169,6 +169,47 @@ def comprobar(sbom: dict) -> list[Hallazgo]:
     return hallazgos
 
 
+PLACEHOLDER_DE_NOTICES = "PENDIENTE DE COMPLETAR"
+
+
+def comprobar_notices(sbom: dict, notices: str | None) -> list[Hallazgo]:
+    """R-L03 · el documento legible de atribucion recoge lo que el SBOM dice.
+
+    `R-J07` solo comprueba que `THIRD_PARTY_NOTICES.md` viaje dentro del JAR, y
+    el andamiaje lo escribe con «PENDIENTE DE COMPLETAR» al lado de cada
+    dependencia declarada. El primer ensayo con una dependencia real
+    (21-sep-2026) mostro que ese fichero, sin cerrar, pasaba las cuatro capas:
+    el certificado habria dado READY con la atribucion a medias. Solo aplica
+    cuando el SBOM trae dependencias: sin ninguna, el fichero es correcto tal
+    cual sale del andamiaje. `notices=None` es «no me lo han dado» y salta la
+    regla (llamadas sobre un SBOM suelto).
+    """
+    componentes = sbom.get("components") or []
+    if notices is None or not componentes:
+        return []
+    hallazgos: list[Hallazgo] = []
+    if PLACEHOLDER_DE_NOTICES in notices:
+        hallazgos.append(
+            Hallazgo("R-L03", "error",
+                     f"THIRD_PARTY_NOTICES.md sigue diciendo «{PLACEHOLDER_DE_NOTICES}»: el "
+                     f"andamiaje lo deja asi a proposito y hay que cerrarlo a mano con la "
+                     f"licencia real de cada dependencia antes de enviar")
+        )
+    for componente in componentes:
+        grupo, nombre = componente.get("group", ""), componente.get("name", "")
+        if not nombre:
+            continue
+        # Vale la coordenada `grupo:nombre` o el nombre del artefacto a secas:
+        # lo que se exige es que quien lea el documento encuentre la libreria.
+        if f"{grupo}:{nombre}" not in notices and nombre not in notices:
+            hallazgos.append(
+                Hallazgo("R-L03", "error",
+                         f"THIRD_PARTY_NOTICES.md no menciona {grupo}:{nombre}, que el SBOM dice "
+                         f"que viaja dentro del JAR: anadela con su licencia")
+            )
+    return hallazgos
+
+
 def localizar_sbom(raiz: pathlib.Path) -> pathlib.Path | None:
     directorio = raiz / RUTA_SBOM_POR_DEFECTO
     if not directorio.is_dir():
@@ -200,6 +241,14 @@ def main() -> int:
 
     componentes = sbom.get("components") or []
     hallazgos = comprobar(sbom)
+    # R-L03 solo tiene sentido con la raiz del proyecto delante: sobre un SBOM
+    # suelto no hay THIRD_PARTY_NOTICES.md que cotejar, y se dice.
+    # Un fichero AUSENTE no es de esta regla: `R-J07` ya lo ve, en el JAR, que
+    # es donde importa. Aqui se juzga lo que dice cuando existe.
+    if argumento.is_dir():
+        ruta_notices = argumento / "THIRD_PARTY_NOTICES.md"
+        notices = ruta_notices.read_text(encoding="utf-8", errors="replace") if ruta_notices.is_file() else None
+        hallazgos += comprobar_notices(sbom, notices)
     # Sin unidad portante A PROPOSITO: cero dependencias de terceros es
     # legitimo y frecuente --el SDK y log4j son `compileOnly`, los provee el
     # contenedor--, asi que exigir que no sea cero seria una alarma que salta

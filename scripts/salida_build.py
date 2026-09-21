@@ -219,6 +219,27 @@ def _mas_reciente(
     return max((p.stat().st_mtime, p) for p in candidatos)
 
 
+def fuente_ausente(raiz: pathlib.Path) -> pathlib.Path | None:
+    """La primera de `FUENTES_QUE_INVALIDAN` que YA NO ESTA, o None.
+
+    La rancidez comparaba marcas de tiempo de los ficheros que existen, asi que
+    un borrado era invisible: sin `LICENSE`, `THIRD_PARTY_NOTICES.md` ni
+    `exclude.xml` el certificado seguia READY sobre un arbol que Gradle ya no
+    puede construir (`excludeFilter` apunta a nada) y cuyo JAR nuevo no
+    llevaria los textos legales que R-J07 lee del JAR viejo. Prueba adversaria
+    del 21-sep-2026, caso 18a. Solo se mira en un proyecto andamiado --con
+    `build.gradle`--: un arbol de prueba hecho a mano no tiene por que llevar
+    los cinco, y sin `build.gradle` no hay build que certificar.
+    """
+    raiz = pathlib.Path(raiz)
+    if not (raiz / "build.gradle").is_file():
+        return None
+    for nombre in FUENTES_QUE_INVALIDAN:
+        if not (raiz / nombre).is_file():
+            return raiz / nombre
+    return None
+
+
 def fuente_posterior_a(
     raiz: pathlib.Path,
     artefacto: pathlib.Path,
@@ -239,6 +260,9 @@ def fuente_posterior_a(
     artefacto = pathlib.Path(artefacto)
     if not artefacto.is_file():
         return None
+    ausente = fuente_ausente(raiz)
+    if ausente:
+        return ausente
     reciente = _mas_reciente(pathlib.Path(raiz), insumos)
     if reciente and artefacto.stat().st_mtime < reciente[0]:
         return reciente[1]
@@ -261,6 +285,16 @@ def ingerir(
             f"no consta ninguna ejecucion de `./gradlew build`: no existe "
             f"`{RUTA_POR_DEFECTO.as_posix()}`. Capturarla con `{COMANDO_DE_CAPTURA}` "
             f"--o pasar `--salida-build <ruta>`-- y volver a certificar",
+        )
+
+    ausente = fuente_ausente(raiz)
+    if ausente:
+        return ResultadoBuild(
+            RANCIO,
+            {},
+            f"el log del build es RANCIO: falta `{ausente.relative_to(raiz).as_posix()}`, "
+            f"que existia cuando se construyo, asi que certifica un arbol que ya no es el "
+            f"que se entrega. Restaurar el fichero y volver a ejecutar `{COMANDO_DE_CAPTURA}`",
         )
 
     reciente = _mas_reciente(raiz)

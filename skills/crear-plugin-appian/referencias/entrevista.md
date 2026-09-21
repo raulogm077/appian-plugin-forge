@@ -28,8 +28,9 @@ Son dos cosas distintas y ninguna basta sola.
   `Required` de un input de Smart Service no es opinable: sin ese dato no compila. Lo
   comprueba un script:
   `python "${CLAUDE_PLUGIN_ROOT}/scripts/contrato.py" docs/contrato.md`.
-  En PowerShell, `$env:CLAUDE_PLUGIN_ROOT` — `${…}` es sintaxis de variable de sesión y se
-  expande a cadena vacía sin avisar; el porqué, en
+  En PowerShell, si el marcador de la raíz del plugin llega literal, se escribe la ruta absoluta
+  del plugin: `${…}` es sintaxis de variable de sesión y se expande a cadena vacía sin avisar, y
+  `$env:CLAUDE_PLUGIN_ROOT` no existe; el porqué, en
   `${CLAUDE_PLUGIN_ROOT}/skills/crear-plugin-appian/referencias/entorno-windows.md`.
 - **Puerta de confianza** — *«¿puedo predecir tu reacción a las tres siguientes preguntas
   que haría?»*. Si no, seguir. Con **suelo antibucle**: si tras varias rondas la confianza
@@ -68,6 +69,7 @@ se enseña todo lo demás.**
 | `entradas[].required` | **Decidido, confirmado** | Se propone `ALWAYS` salvo que el usuario haya dicho que el dato puede faltar. Un primitivo no admite `OPTIONAL` (`R-F02`) |
 | `descripcion` de cada uno | **Decidido** | Se redacta y se enseña: acaba en el `.properties` que ve el diseñador |
 | `servlet.url_pattern`, `servlet.parametro` | **Decidido** | **Solo en `tipo = servlet`**, y los nombres son exactamente esos —`url_pattern` con guion bajo—. `url_pattern` es la ruta que declara el manifiesto (`/lo-que-sea`); `parametro`, el nombre del parámetro de petición que lee el andamiaje. Nadie los documentaba y había que sacarlos leyendo `andamiar.py`: lo dijo una prueba E2E del 21-sep-2026 |
+| `dependencias` | **Decidido, confirmado** | Solo si la respuesta a «¿usa librerías de terceros?» es sí: una lista de coordenadas Maven, `dependencias = ["grupo:artefacto:versión"]`, con la versión concreta comprobada en Maven Central. **Es clave de raíz del TOML y va en la primera línea del bloque, antes de `[plugin]`**: escrita después de cualquier tabla, TOML la cuelga de esa tabla y el andamiador no la ve —`contrato.py` lo rechaza desde el 21-sep-2026—. De ahí salen el `implementation` de `build.gradle`, la línea de `THIRD_PARTY_NOTICES.md` y, vía el SBOM, la capa de licencias. El ejemplo canónico es `tests/fixtures/contratos/function-con-dependencia.md` |
 | Las seis de admisión y la séptima | **PREGUNTADO** | Son la tabla de abajo |
 
 ### Las subpaletas que existen (`clase.paleta`)

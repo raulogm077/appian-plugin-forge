@@ -7,16 +7,27 @@ principal en el cierre del ciclo 19 para bajar `SKILL.md` del tope de tamaño (h
 Dos trampas distintas, y las dos comparten el mismo patrón: **fallan en silencio**, con un mensaje
 que se lee como «la clase/ruta no existe» en vez de «esto es sintaxis de PowerShell, no de bash».
 
-## 1 · `${CLAUDE_PLUGIN_ROOT}` no se expande en PowerShell (paso 1 y en general)
+## 1 · El marcador de la raíz del plugin no es una variable de entorno (paso 1 y en general)
 
-`${NOMBRE}` es sintaxis de variable **de PowerShell**, no de variable de entorno: se expande a
-**cadena vacía sin avisar** — `python /scripts/contrato.py`, que falla por una ruta que nadie
-escribió. Se escribe `$env:CLAUDE_PLUGIN_ROOT`. Y si la variable no está puesta en el entorno,
-resolverla a mano a la raíz del checkout del plugin antes de seguir: vacía, `$env:` falla igual de
-callado.
+`${NOMBRE}` es sintaxis de variable **de PowerShell**: el marcador `CLAUDE_PLUGIN_ROOT` pegado tal
+cual en un comando se expande a **cadena vacía sin avisar** — `python /scripts/contrato.py`, que
+falla por una ruta que nadie escribió. Y traducirlo a `$env:CLAUDE_PLUGIN_ROOT` **no arregla
+nada**: Claude Code no define esa variable de entorno (`printenv` la devuelve vacía, medido el
+21-sep-2026 con el plugin cargado). Lo que hace es **sustituir el marcador por la ruta absoluta
+del plugin al cargar `SKILL.md`**, así que con el plugin cargado los comandos de la skill ya
+llegan con la ruta puesta. Donde el marcador aparezca literal —trabajando dentro del repo del
+forge sin cargarlo, o en una referencia como esta abierta con `Read`— se escribe la ruta
+absoluta del plugin, entre comillas dobles porque puede llevar espacios: la misma que muestra
+`SKILL.md` cargado, o la raíz del checkout. Hasta el 21-sep-2026 este párrafo mandaba usar
+`$env:CLAUDE_PLUGIN_ROOT`; se había medido con la variable puesta **a mano**, que no es el caso
+de nadie que instale el plugin.
 
-Esta traducción aplica a **todas** las `${CLAUDE_PLUGIN_ROOT}` de `SKILL.md`, no solo a la del
-paso 1.
+Esto vale para **todas** las apariciones del marcador en `SKILL.md`, no solo la del paso 1.
+
+⚠️ Y una trampa vecina, del propio PowerShell 5.1: un `.ps1` guardado en UTF-8 **sin BOM** lo lee
+como ANSI, así que una ruta con `ñ` o tilde dentro del script llega deformada (`frÃ­o Ã±`) y
+`Set-Location` falla con «no se encuentra la ruta». Los `.ps1` con rutas no ASCII se guardan con
+BOM, o se pasan las rutas por parámetro.
 
 ## 2 · Localizar el JAR del SDK y ejecutar `javap` (paso 4)
 
@@ -64,12 +75,9 @@ mkdir -p build && ./gradlew build --console=plain > build/salida-build.log 2>&1
 **En PowerShell 5.1 ese comando no vale, y no es el único del pipeline que hay que traducir.** Aquí
 no hay `&&`, y eso es error de parseo: ruidoso, se ve. El silencioso está en las **otras** líneas
 ejecutables que publica la skill —las que invocan
-`python "${CLAUDE_PLUGIN_ROOT}/scripts/verificar_todo.py"` y sus hermanas—, porque `${NOMBRE}` es
-sintaxis de variable de PowerShell, no de variable de entorno (ver § 1 arriba): se expande a cadena
-vacía y no avisa. Medido en este equipo (Windows 11, PS 5.1) con la variable de entorno **puesta**:
-`"${CLAUDE_PLUGIN_ROOT}/scripts/verificar_todo.py"` imprime `/scripts/verificar_todo.py`, y
-`"$env:CLAUDE_PLUGIN_ROOT/..."` imprime la ruta real. En PowerShell se escribe
-`$env:CLAUDE_PLUGIN_ROOT`. Copiable:
+`python "${CLAUDE_PLUGIN_ROOT}/scripts/verificar_todo.py"` y sus hermanas— cuando el marcador
+llega literal: `${NOMBRE}` es sintaxis de variable de PowerShell y se expande a cadena vacía sin
+avisar (§ 1). La salida es la de § 1: la ruta absoluta del plugin, entre comillas dobles. Copiable:
 
 ```powershell
 New-Item -ItemType Directory -Force build
@@ -114,3 +122,9 @@ lo dice: ves hallazgos que creías excluidos. **No es que SpotBugs esté roto**,
 saltarse la puerta con `-x spotbugsMain`: es reescribir el fichero sin BOM. `R-F14` lo detecta y
 lo nombra, porque el síntoma lleva al diagnóstico contrario — pasó en una prueba E2E real del
 21-sep-2026.
+
+Y el pariente peor: **`>` en PowerShell 5.1 escribe UTF-16LE**. Un `contrato.md`, un
+`exclude.xml`, un `decisiones.md` o un `.properties` escritos así no son UTF-8, y los scripts lo
+dicen con esas palabras («está guardado en UTF-16 … reescríbelo en UTF-8») en vez de morir con
+`UnicodeDecodeError`. Para escribir ficheros desde PowerShell, `Out-File -Encoding utf8` —que
+pone BOM, tolerable en todo menos en `exclude.xml`— o, mejor, el editor.

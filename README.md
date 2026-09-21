@@ -1,209 +1,218 @@
 # appian-plugin-forge
 
-Plugin de Claude Code que genera plug-ins de Appian **verificados antes de
-desplegarse**: entrevista → contrato → andamiaje determinista → cuatro capas
-de verificación → dossier y certificado. Existe porque un plug-in de Appian
-no se puede ejecutar antes de entregarlo (el despliegue cuesta un ciclo de
-aprobación): todo lo que se afirme sobre él tiene que ser verdad a la
-primera.
+Plugin de Claude Code que genera plug-ins de Appian —Function, Writer Function, Smart Service y
+Servlet— a partir de una entrevista en castellano, y los verifica en local antes de entregarlos.
+Existe porque un plug-in de Appian no se puede ejecutar antes de desplegarlo: Appian exige
+aprobación previa y documenta que tarda «within a week». Cada error que no se atrape en local
+cuesta un ciclo entero de aprobación, así que todo lo que se afirme sobre el plug-in tiene que ser
+verdad a la primera.
 
-## Qué genera
+Repositorio público: https://github.com/raulogm077/appian-plugin-forge
 
-| Tipo | Estado |
-|---|---|
-| Function (y su variante *writer function*) | ✅ Fase 1 |
-| Smart Service | ✅ Fase 1 |
-| Servlet | ✅ Fase 1 |
-| Component / Connected System | ❌ fuera de alcance (cadena de herramientas propia) |
+## Para quién es y qué genera
 
-## Requisitos de la máquina
+Para quien programa plug-ins de Appian en Java y trabaja con Claude Code. La entrevista y todos
+los documentos que se generan están en castellano.
 
-- Python 3.11+ — los scripts usan solo biblioteca estándar (la suite de
-  tests, en `tests/`, sí depende de `pytest`).
-- JDK 17 — los plug-ins generados compilan con *release* 17.
-- Gradle **no** se instala: cada proyecto generado lleva su wrapper
-  (8.14.3, con `distributionSha256Sum` fijado).
-- **Opcional, y conviene saber qué se pierde sin él:** el servidor MCP
-  `appian-docs`. El agente `appian-plugin-forge:appian-docs-researcher` lo
-  declara en su `tools`, y este plugin **no lo trae** — ni `.mcp.json` ni
-  bloque `mcpServers`. En una máquina sin él, ese agente arranca sin su
-  fuente principal y cae a `javap` sobre el JAR del SDK y a `WebFetch`.
-  Degrada con dignidad y nada se rompe, pero un requisito que no está escrito
-  no se puede cumplir a propósito.
+| Si pides… | Genera | Ejemplo |
+|---|---|---|
+| calcular o transformar algo dentro de una expresión o interfaz | **Function** | validar un IBAN |
+| guardar datos desde una pantalla al pulsar un botón | **Writer Function** | registrar una auditoría |
+| un paso propio de un modelo de proceso | **Smart Service** | leer un CSV adjunto |
+| un endpoint HTTP dentro de Appian para un sistema externo | **Servlet** | calcular un hash |
+
+El tipo no se pregunta: se deduce de lo que describes y se propone con su porqué. Es donde más se
+falla, y el error más caro —un smart service donde hacía falta una writer function— no lo detecta
+ninguna verificación posterior (`skills/crear-plugin-appian/referencias/tipos-de-plugin.md`).
+
+**Lo que no hace:** Components (React) y Connected Systems, que tienen cadena de herramientas
+propia; modificar, auditar o migrar un plug-in que ya existe; desplegar en Appian.
+
+## Requisitos
+
+| Qué | Versión | Por qué |
+|---|---|---|
+| Claude Code | con soporte de plugins (probado con 2.1.263) | es un plugin: una skill, tres agentes y scripts |
+| Python | 3.11 o superior | los scripts usan solo la biblioteca estándar; `pytest` solo para la suite |
+| JDK | **17, exactamente** | la plantilla clava el *toolchain* a 17 y no trae resolutor que descargue otro: con solo un JDK 21, Gradle para en «No matching toolchains found» |
+| Git | cualquiera | el proyecto generado tiene que ser un repositorio: la skill hace un commit por tarea y el certificado registra la revisión |
+| Gradle | no se instala | cada proyecto generado lleva su wrapper (8.14.3, con SHA fijado) |
+| Red | la primera vez | el wrapper descarga Gradle de `services.gradle.org` y el build resuelve el SDK de Appian y los plugins de análisis desde Maven Central: unos 230 MB en la caché de Gradle y varios minutos, solo en el primer `./gradlew build` |
+| MCP `appian-docs` | opcional | lo usa el agente que consulta la documentación; sin él cae a `javap` sobre el JAR del SDK y a `WebFetch` |
+
+No hace falta Node ni npm. En Windows, los comandos de la skill son de **bash** (Git Bash); la
+traducción a PowerShell 5.1, con sus trampas, vive en
+`skills/crear-plugin-appian/referencias/entorno-windows.md`.
+
+Todo lo anterior se midió el 21-sep-2026 sobre un clon limpio del repositorio en Windows 11 con
+solo JDK 17, Python 3.11 y Git for Windows: la suite, el linter, los evals y una build en frío
+pasaron a la primera, también con espacios y `ñ` en las rutas.
 
 ## Instalación
 
-Este plugin no está publicado en ningún marketplace: vive en un checkout
-local. Hay dos rutas oficiales para activarlo en Claude Code.
-
-### Antes de cualquiera de las dos rutas
+Desde el marketplace del propio repositorio, dentro de Claude Code:
 
 ```
-claude plugin validate "<ruta-absoluta-a>/appian-plugin-forge"
-```
-
-### Ruta 1 — desarrollo e iteración (recomendada mientras el forge cambia)
-
-```
-claude --plugin-dir "<ruta-absoluta-a>/appian-plugin-forge"
-```
-
-Carga el plugin para esa sesión, sin marketplace ni instalación. Tras
-editar cualquier fichero, `/reload-plugins` recoge los cambios sin
-reiniciar la sesión.
-
-### Ruta 2 — instalación persistente
-
-Requiere `appian-plugin-forge/.claude-plugin/marketplace.json`, que no
-existe en el repositorio — créalo la primera vez con el patrón
-autorreferenciado (el propio checkout como marketplace de sí mismo):
-
-```json
-{
-  "name": "appian-plugin-forge",
-  "description": "Marketplace local del plugin appian-plugin-forge, para instalar un checkout del repositorio directamente.",
-  "owner": { "name": "Raul Gomez Moya" },
-  "plugins": [ { "name": "appian-plugin-forge", "source": "./", "version": "0.1.0" } ]
-}
-```
-
-Después, dentro de Claude Code:
-
-```
-/plugin marketplace add "<ruta-absoluta-a>/appian-plugin-forge"
+/plugin marketplace add raulogm077/appian-plugin-forge
 /plugin install appian-plugin-forge@appian-plugin-forge
 ```
 
-**`/plugin install` copia la carpeta a caché — no lee en vivo.** Con
-`version` fijada en `plugin.json`, `/plugin update` no trae cambios hasta
-subir ese número. Mientras el forge esté en iteración activa, usa la
-Ruta 1.
+O desde un clon local, sin instalar nada, para una sesión:
 
-## Uso
+```
+git clone https://github.com/raulogm077/appian-plugin-forge
+claude --plugin-dir "<ruta-absoluta-del-clon>"
+```
 
-Pide un plug-in de Appian en lenguaje natural («necesito un smart service
-que lea ficheros EML…»); la skill `crear-plugin-appian` se dispara y guía:
+Esta segunda vía lee el plugin tal como está en disco, así que es la adecuada si vas a tocarlo. Lo
+que Claude Code registra con ella —la skill `crear-plugin-appian` y los tres agentes, todos con el
+prefijo `appian-plugin-forge:`— se ve con:
 
-1. **Entrevista** — una pregunta por turno hasta congelar el contrato.
-2. **Perfil** — ESTÁNDAR por defecto; se propone RIGUROSO si el contrato
-   parsea formatos ajenos, sale a la red, toca credenciales o maneja datos
-   personales. Lo confirma siempre el usuario.
-3. **Andamiaje** — determinista, desde plantillas (`scripts/andamiar.py`).
-4. **Verificación** — cuatro capas (`scripts/verificar_todo.py`): reglas del
-   framework y AppMarket, compilación + escáner de bytecode contra el índice
-   del SDK, tests, empaquetado.
-5. **Entrega** — dossier + certificado en `docs/` del proyecto generado.
+```
+claude --plugin-dir "<ruta-absoluta-del-clon>" plugin details appian-plugin-forge
+claude plugin validate "<ruta-absoluta-del-clon>/.claude-plugin/plugin.json"
+```
 
-## Cómo funciona por dentro
+El manifiesto del plugin se valida con su ruta explícita a propósito: `claude plugin validate`
+sobre el directorio valida el `marketplace.json` que hay al lado, no el plugin.
 
-`docs/como-funciona.md` es el mapa del plugin, con diagramas: qué hace cada
-paso, **quién** lo hace y **con qué**, las cuatro capas de validación, los
-seis estados de una puerta del certificado y lo que este sistema **no** puede
-comprobar. Es documentación y no una fuente de reglas — las señala en vez de
-duplicarlas, porque dos copias divergen: viven en la skill y en
-`assets/reglas-de-validacion.md`.
+## Primer uso
+
+Pide el plug-in en lenguaje natural. Con algo como «necesito una función que valide un IBAN desde
+una regla de expresión», la skill `crear-plugin-appian` se dispara sola y arranca la
+**entrevista**: una pregunta por turno, sin opción múltiple, enseñando siempre su hipótesis para
+que la corrijas de un plumazo. Un primer turno orientativo:
+
+```
+Q: ¿Qué recibe la función y qué devuelve? Por ejemplo: recibe el IBAN como texto y devuelve verdadero o falso.
+GUESS: Una Function de lectura —se invoca desde una expresión y no guarda nada— con una entrada `iban` de tipo String y una salida booleana.
+CONFIDENCE: ~60%
+```
+
+Siguen siete preguntas de admisión: si parsea formatos ajenos, si sale a la red, si toca
+credenciales, si maneja datos personales, si usa librerías de terceros, si toca ficheros y si es
+una versión nueva de un plug-in ya desplegado. Las cuatro primeras deciden el **perfil** de rigor.
+Nada se genera hasta que dices «sí» al **contrato**: un Markdown con un bloque TOML que fija
+nombre, clave, paquete, entradas y salidas, y que queda en `docs/contrato.md`.
+
+Después, Claude sigue los siete pasos de la skill sin preguntar más: plan de tareas, andamiaje
+determinista con `scripts/andamiar.py`, implementación tarea a tarea con tests primero y un commit
+por cada una, verificación con `scripts/verificar_todo.py`, revisión contra el contrato por un
+agente que no ha visto la conversación, y dossier. El primer `./gradlew build` descarga Gradle y
+las dependencias y tarda varios minutos; los siguientes, segundos. La primera vez que la skill abra
+una de sus referencias desde tu proyecto, Claude Code pedirá permiso de lectura sobre la carpeta
+del plugin: es normal, acéptalo.
+
+Lo que obtienes es un proyecto Gradle en el directorio que indiques:
+
+```
+<proyecto>/
+  build.gradle, settings.gradle, gradlew, gradle/wrapper/    # cadena de build, con Gradle fijado
+  config/spotbugs/exclude.xml                                # exclusiones de SpotBugs, cada una con su porqué
+  src/main/java/<paquete>/<function|smartservice|servlet>/   # el adaptador de Appian
+  src/main/java/<paquete>/dominio/                           # tu lógica, sin dependencia del SDK
+  src/main/resources/appian-plugin.xml                       # manifiesto, más los bundles _en_US y _es_ES
+  src/test/java/                                             # JUnit 5 + Mockito
+  docs/contrato.md                                           # lo que acordaste en la entrevista
+  docs/decisiones.md                                         # cada decisión que se aparta del andamiaje, con su porqué
+  docs/CERTIFICADO.md                                        # qué se verificó, con qué evidencia
+  docs/DOSSIER.md                                            # expediente de sumisión: contrato, decisiones, API usada, certificado, firma
+  docs/GUIA_INTEGRACION.md                                   # para el desarrollador Appian que lo integra
+  docs/FICHA_APPMARKET.md                                    # texto de ficha para el AppMarket
+  build/libs/<artefacto>-<versión>.jar                       # lo que se envía a Appian
+```
+
+Justo después del andamiaje solo existen la cadena de build, el adaptador, el manifiesto, los
+bundles y `docs/contrato.md`; el resto aparece a lo largo del ciclo.
 
 ## Cómo leer el certificado
 
-El certificado es un libro mayor, no un binario: qué puertas pasaron con qué
-evidencia, cuáles no y por qué. **Dos filas van siempre en rojo** —
-resolución OSGi en la plataforma y ejecución en Appian real — porque este
-sistema no puede comprobarlas, y decirlo con todas las letras es su función.
-Un rojo declarado no es un defecto del plug-in: es el límite honesto de la
-verificación local.
+`docs/CERTIFICADO.md` no es un semáforo: es un libro mayor con una fila por puerta —13 en
+ESTÁNDAR, 17 en RIGUROSO— que dice qué se ejecutó, sobre cuánto insumo y con qué resultado. Lo
+primero es la cabecera: `STATUS: READY_FOR_APPIAN_SUBMISSION` o `STATUS: NOT_READY`, y en el
+segundo caso, debajo, qué puerta lo impide y por qué. **Dos filas van siempre en rojo** —resolución
+OSGi en la plataforma y ejecución en Appian real— porque no se pueden comprobar en local; no
+cuentan contra el `STATUS` y no son un defecto del plug-in, son el límite declarado. Una puerta que
+no se ejecutó nunca aparece como pasada, y un verde sobre cero tests o cero clases tampoco cuenta.
+Los seis estados y la columna de insumo, en `skills/crear-plugin-appian/referencias/certificado.md`.
 
-## El equipo de runtime
+## Cómo funciona por dentro
 
-| Agente | Papel |
+Lo determinista lo hacen scripts de Python y lo que exige juicio lo hace Claude leyendo la skill.
+La entrevista produce un contrato; el andamiaje sustituye variables sobre plantillas, sin modelo de
+por medio; la verificación son cuatro capas mecanizadas —reglas del framework y políticas de
+AppMarket sobre el bytecode, compilación más escáner de la API usada contra el índice del SDK,
+tests, y empaquetado del JAR—; y tres agentes cierran lo que un script no puede:
+`appian-plugin-forge:appian-docs-researcher` (documentación de Appian: un hecho con su fuente),
+`appian-plugin-forge:plugin-compiler-fixer` (bucle compilar/corregir) y
+`appian-plugin-forge:plugin-contract-reviewer` (¿el código hace lo que dice el contrato?). Cada
+regla tiene identificador y fuente oficial en `assets/reglas-de-validacion.md`. El mapa completo,
+con diagramas y con lo que el sistema **no** puede comprobar, es `docs/como-funciona.md`; el porqué
+de cada decisión, en la spec `docs/superpowers/specs/2026-08-08-appian-plugin-forge-design.md`
+(repo de desarrollo; no viaja con el plugin).
+
+### Los dos perfiles
+
+**ESTÁNDAR** ejecuta las cuatro capas. **RIGUROSO** añade cobertura JaCoCo, mutación PIT, property
+tests y build reproducible. Se propone en la entrevista cuando el plug-in parsea formatos ajenos,
+sale a la red, toca credenciales o maneja datos personales, y lo confirmas tú. El perfil no cambia
+qué reglas se cumplen, solo cuántas puertas se ejecutan; entre lo que declara el contrato y lo que
+se pide al verificar, manda el más estricto.
+
+## Solución de problemas
+
+| Síntoma | Causa | Dónde está la salida |
+|---|---|---|
+| En PowerShell, `python /scripts/contrato.py` falla con una ruta que nadie escribió | El marcador de la raíz del plugin, `${CLAUDE_PLUGIN_ROOT}`, es sintaxis de variable de PowerShell y se expande a vacío. No es una variable de entorno: se escribe la ruta absoluta del plugin. `&&` tampoco existe en PowerShell 5.1 | `skills/crear-plugin-appian/referencias/entorno-windows.md` |
+| El build de un servlet recién andamiado falla en `spotbugsMain` con `SERVLET_PARAMETER` | Es esperado: la exclusión queda abierta hasta que implementes `ejecutar()` y decidas si procede. No se relaja la puerta; se decide y se escribe en `docs/decisiones.md` | `skills/crear-plugin-appian/referencias/secsp-servlet.md` |
+| SpotBugs ignora `config/spotbugs/exclude.xml` y el build sigue en verde | El fichero lleva BOM (`Out-File` lo pone por defecto) y SpotBugs descarta el filtro entero. La regla `R-F14` lo detecta | reescribir el fichero sin BOM |
+| El primer `./gradlew build` falla | Sin Java dice `JAVA_HOME is not set and no 'java' command could be found`; con un JDK que no es 17, «No matching toolchains found» (la plantilla no descarga otro); sin red no puede bajar Gradle ni el SDK | instalar JDK 17; repetir con red |
+| Claude Code pide permiso para leer `skills/crear-plugin-appian/referencias/…` | El plugin vive fuera de tu proyecto y la skill abre sus referencias con `Read` | aceptar; con `claude --plugin-dir` puede añadirse `--add-dir "<ruta-del-clon>"` |
+| El certificado dice que la salida del build no consta | `./gradlew clean build` borra `build/`, y el log vive ahí. Primero se limpia, después se captura | `skills/crear-plugin-appian/referencias/certificado.md` |
+| En RIGUROSO tres filas dicen «ese comando no se ejecutó» | Cobertura, mutación y `releaseCheck` no forman parte de `build`: se invocan con `./gradlew build releaseCheck` sobre un worktree limpio | `skills/crear-plugin-appian/SKILL.md`, paso 5 |
+| El agente investigador no encuentra el MCP `appian-docs` | Es opcional y este plugin no lo trae; el agente cae a `javap` y `WebFetch` | nada que arreglar |
+
+## Limitaciones
+
+- **No despliega ni ejecuta el plug-in.** Quien aprueba es Appian. `READY_FOR_APPIAN_SUBMISSION`
+  significa que las puertas ejecutables en local se ejecutaron y pasaron sobre insumos reales, no
+  que el envío vaya a aprobarse.
+- **Dos filas del certificado van siempre en rojo**, a propósito.
+- **Component y Connected System quedan fuera**, igual que editar o migrar un plug-in existente.
+- **Que el tipo deducido sea el correcto solo se comprueba en la entrevista**: un tipo equivocado
+  compila, pasa sus tests y se empaqueta.
+- Algunas reglas son heurísticas declaradas, el juicio sobre licencias es mecánico y no legal, y la
+  puerta de property tests cuenta nombres de clase. Está todo escrito en `docs/como-funciona.md`,
+  sección 7.
+
+## Contribuir y verificar
+
+Desde la raíz del plugin, con `PYTHONUTF8=1` por delante (sin ello nada falla, pero la salida con
+acentos sale deformada en Git Bash):
+
+| Comando | Qué es |
 |---|---|
-| `appian-plugin-forge:appian-docs-researcher` | única puerta a la documentación de Appian |
-| `appian-plugin-forge:plugin-compiler-fixer` | bucle compilar/corregir |
-| `appian-plugin-forge:plugin-contract-reviewer` | ¿el código hace lo que dice el contrato? |
+| `python -m pytest` | la suite: unos 630 tests en un par de minutos; fuera del repo de desarrollo saltan 4, y sin el proyecto de referencia del autor, otros 10 |
+| `python scripts/skill_lint.py` | linter de la skill: frontmatter, secciones obligatorias y citas rotas |
+| `python scripts/run_evals.py` | evals de disparo de la skill; sin red ni API |
+| `python -m pytest -m e2e tests/test_humo_e2e.py -v -s` | humo de punta a punta: construye un proyecto real con Gradle, tarda minutos y necesita JDK 17 y red |
 
-Scripts invocables a mano (desde la raíz del plugin, con `PYTHONUTF8=1`):
-`python -m pytest` (suite), `python scripts/skill_lint.py` (lint de la
-skill), `python scripts/run_evals.py` (evals de disparo),
-`python -m pytest -m e2e tests/test_humo_e2e.py` (humo E2E con build real).
-
-`python scripts/generar_indice_tipos.py` **regenera
-`assets/indice-tipos-26.3.json`**, que es contra lo que la capa 2 decide si
-una clase de Appian existe. Se ejecuta a mano y rara vez —cuando cambia la
-versión del SDK—, y por eso estaba sin documentar: es el único productor de
-un insumo del que depende una puerta entera, y sin esta línea había que
-descubrirlo leyendo `scripts/`. Si el índice falta, el escáner **no** se
-detiene: conmuta a un filtro grueso por paquete y lo declara en el
-certificado como modo degradado.
-
-Es reproducible: sobre el mismo SDK devuelve el mismo `hash_sha256` y los
-mismos tipos, y lo único que cambia es el campo `fecha`. Así que si se ejecuta
-sin que el SDK haya cambiado, el diff resultante es solo esa línea y se
-descarta.
+`scripts/generar_indice_tipos.py` regenera `assets/indice-tipos-26.3.json`, el índice contra el
+que la capa 2 decide si una clase del SDK existe; solo se ejecuta cuando cambia la versión del SDK.
+Varios tests leen este README y fijan lo que tiene que decir: los nombres de los tres agentes, los
+scripts que cita, el enlace al mapa y las órdenes de instalación.
 
 ## Licencia y procedencia
 
-El forge es **MIT** (`LICENSE`, y el campo `license` del manifiesto; un test los ata).
-Los plug-ins que **genera** llevan su propio `LICENSE`, también MIT por defecto y a nombre
-del `vendor` del contrato: es un valor por omisión del andamiaje, no una decisión tomada
-por quien lo usa, y el `THIRD_PARTY_NOTICES.md` generado lo dice con esas palabras.
+El forge es **MIT** (`LICENSE`; un test lo ata al manifiesto). Los plug-ins que genera llevan su
+propio `LICENSE`, también MIT por defecto y a nombre del `vendor` del contrato: es un valor por
+omisión del andamiaje, y el `THIRD_PARTY_NOTICES.md` generado lo dice. Las plantillas de Gradle
+derivan del `build.gradle` del proyecto de referencia —el smart service *Read EML*, publicado en
+el AppMarket bajo Apache-2.0—, y el derivado puede ser MIT porque el titular del copyright es el
+mismo: Apache-2.0 es la concesión de ese proyecto a terceros, no una atadura sobre su autor. El
+wrapper de Gradle es un redistribuible de Gradle Inc. Queda sin resolver que la guía de la que
+viene la estructura de las clases, `docs/AI Plugin Generator skill Support Guide.md` (repo de
+desarrollo; no viaja con el plugin), no declara licencia ni autor.
 
-**De dónde vienen las plantillas de Gradle.** `assets/plantillas/comun/build.gradle.tmpl` y
-`assets/plantillas/perfil-riguroso.gradle.tmpl` **derivan del `build.gradle` del proyecto de
-referencia** —el smart service *Read EML*, publicado en el AppMarket—, no de la guía: medido,
-el 77 % de sus líneas sustantivas es texto verbatim de aquel fichero y el 72 % solo existe
-allí. La cadena de build entera (SpotBugs, JaCoCo, PIT, CycloneDX, *toolchain*, JAR
-reproducible) es suya; la guía no la tiene.
-
-Eso importa porque el proyecto de referencia es **Apache-2.0**, y conviene dejar escrito por
-qué el derivado puede ser MIT: **el titular del copyright es el mismo** («Copyright 2026
-Raul» en aquel `LICENSE`). Apache-2.0 es la concesión que ese proyecto hace a terceros, no
-una atadura sobre su autor, así que relicenciar la obra propia es suyo y de nadie más. Si
-alguna vez uno de los dos repositorios cambia de manos, esta nota es la que evita tener que
-reconstruir esa cadena de memoria.
-
-El `gradle-wrapper.jar` y los dos `gradlew` son redistribuibles de Gradle Inc., idénticos a
-los de cualquier proyecto Gradle 8.14.3, y no cuentan como derivación de nada de aquí.
-
-⚠️ **Lo que sigue sin resolver:** `docs/AI Plugin Generator skill Support Guide.md` (repo de
-desarrollo; no viaja con el plugin), de la que
-viene la *estructura* (patrón de clase, anotaciones, prohibiciones), **no declara licencia ni
-autor** — es un prompt de sistema sin atribuir. No afecta a la licencia de este repositorio,
-pero antes de publicar el forge conviene saber de quién es.
-
-## Cambios recientes (21-sep-2026)
-
-⚠️ **Si generaste un smart service con una versión anterior a esta, míralo.** La plantilla
-horneaba la clave `error.unexpected` en los dos *bundles* y **no la usaba**: cableaba la frase
-en castellano, así que en un Appian con locale `en_US` el usuario veía español y el
-identificador de correlación no le llegaba. Ya está corregido; en un plug-in ya generado se
-arregla añadiendo `.userMessage("error.unexpected", idCorrelacion)` al `SmartServiceException`.
-
-Lo demás de esta tanda, todo en el sentido de «que la puerta no se pueda apagar sin que se note»:
-
-- **`R-A05`** deja de ser heurística y cubre el *«or any other method»* de la política de Appian:
-  además de `System.setProperty`, vigila `Locale.setDefault`, `TimeZone.setDefault`,
-  `Security.setProperty`, `System.setProperties` y `clearProperty`. Antes, una clase que solo
-  llamara a los dos `setDefault` —que cambian la JVM para **todos** los plug-ins del servidor—
-  pasaba las diez reglas de AppMarket con cero hallazgos.
-- **`R-F14`** vigila ahora **toda** exclusión activa de `config/spotbugs/exclude.xml`, en los
-  cuatro tipos de plug-in y una a una, y marca aparte un `<Match>` sin `<Bug>`, que no excluye un
-  patrón sino que apaga SpotBugs entero. Excluir sigue siendo legítimo; hacerlo sin escribir el
-  porqué en `docs/decisiones.md`, no.
-- La lente de revisión lleva escritas tres exigencias que ningún script puede comprobar: cerrar
-  los `Closeable` **siempre**, de quién es el contexto en un servlet, y no exportar datos ni
-  saltarse la seguridad de la plataforma.
-- El dossier ya no da por ausente un veredicto escrito como `## VEREDICTO: cumple`.
-
-El cotejo completo de las políticas de Appian Cloud contra lo que este forge garantiza —con lo
-que queda fuera— vive en el repositorio de desarrollo, en
-`docs/auditoria-politicas-appmarket-vs-forge.md`.
-
-## Mantenimiento
-
-El forge se valida por hitos con el **gate de ciclo** (`/validar-ciclo`):
-equipo de agentes + certificador, informes en `docs/validaciones/` del repo
-de desarrollo. Spec: `docs/superpowers/specs/2026-08-09-gate-de-ciclo-design.md`
-(repo de desarrollo; no viaja con el plugin).
-
-Reglas de contenido de este README: no promete lo que el sistema no
-comprueba, y **enlaza en vez de duplicar** — las reglas viven en la skill,
-la auditoría y la spec.
+Los cambios por fecha están en `CHANGELOG.md`. Si generaste un smart service antes del
+21-sep-2026, léelo: hay una corrección que afecta a lo ya generado.

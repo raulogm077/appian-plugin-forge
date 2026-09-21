@@ -211,6 +211,26 @@ def comprobar_guardarrailes(tipo: str, gradle: str, exclusiones: str,
                      f"vuelve a comentar la exclusion y deja la puerta en rojo, que es la verdad")
         )
 
+    # Un `<Bug>` SIN `pattern` --`category="SECURITY"`, `code="XSS"`, o un
+    # `PATTERN` mal escrito-- no excluye un patron: apaga una FAMILIA entera, o
+    # todos los patrones de un detector, para lo que case; y como no nombra
+    # ningun patron, el bucle de arriba no tenia nada que exigir en
+    # decisiones.md. Medido el 21-sep-2026 (prueba adversaria, caso 18c):
+    # `<Match><Bug category="SECURITY"/></Match>` dejaba READY con FindSecBugs
+    # apagado. Mismo trato que el <Match> mudo: demasiado ancho, sea cual sea
+    # el motivo. Lo legitimo es `pattern="A"` (o `pattern="A,B"`).
+    anchos = [b for b in raiz.iter("Bug") if not b.get("pattern", "").strip()]
+    if anchos:
+        atributos = sorted({a for b in anchos for a in b.attrib}) or ["(ninguno)"]
+        hallazgos.append(
+            Hallazgo("R-F14", "error",
+                     f"exclude.xml tiene {len(anchos)} <Bug> sin atributo `pattern` (llevan: "
+                     f"{', '.join(atributos)}): eso no excluye un patron, apaga una familia o "
+                     f"un detector ENTERO para lo que case, y no deja nombre que firmar en "
+                     f"docs/decisiones.md. Acota cada exclusion a `pattern=\"...\"`, con su "
+                     f"motivo al lado")
+        )
+
     # El caso peor y el mas invisible: un `<Match>` SIN ningun `<Bug>` dentro no
     # excluye un patron, los silencia TODOS para lo que case (una clase, un
     # paquete entero). No tiene patron que nombrar, asi que el bucle de arriba
@@ -228,13 +248,16 @@ def comprobar_guardarrailes(tipo: str, gradle: str, exclusiones: str,
 
 def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list, *,
               gradle: str | None = None, exclusiones: str = "",
-              decisiones: str = "") -> list[Hallazgo]:
+              decisiones: str = "", lockfile: bool | None = None) -> list[Hallazgo]:
     """`gradle=None` significa «no me han dado el fichero» y salta R-F14; un
     `build.gradle` vacio o sin los ajustes SI es un hallazgo. Son cosas
     distintas y confundirlas tenia un lado barato y otro caro: las llamadas
     unitarias que solo ejercen otras reglas no tienen que fabricar un
     `build.gradle`, y un proyecto real al que le falte no se escapa --`main()`
     siempre pasa una cadena, aunque el fichero no exista--.
+
+    `lockfile` sigue el mismo convenio para R-F15: `None` es «no me lo han
+    dicho» (llamadas unitarias) y `False` es «no existe» (siempre desde `main`).
     """
     hallazgos: list[Hallazgo] = []
     plugin = datos_contrato.get("plugin", {})
@@ -451,6 +474,24 @@ def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list, *,
     if gradle is not None:
         hallazgos += comprobar_guardarrailes(tipo, gradle, exclusiones, decisiones)
 
+    # R-F15 · el cierre de dependencias que RIGUROSO promete existe de verdad.
+    # `perfil-riguroso.gradle.tmpl` activa `dependencyLocking`, pero en el modo
+    # por defecto de Gradle eso no exige ni escribe ningun `gradle.lockfile`:
+    # `./gradlew build` termina en BUILD SUCCESSFUL sin dejar rastro, y la
+    # "reproducibilidad" del perfil se queda en una intencion. El primer
+    # ensayo con una dependencia real (21-sep-2026) genero el lockfile por su
+    # cuenta con `./gradlew dependencies --write-locks` porque nada se lo pedia
+    # ni lo echaba en falta. El proyecto de referencia lo lleva commiteado.
+    if gradle is not None and lockfile is False and "dependencyLocking" in gradle:
+        hallazgos.append(
+            Hallazgo("R-F15", "error",
+                     "build.gradle declara `dependencyLocking` (perfil RIGUROSO) y no existe "
+                     "`gradle.lockfile`: sin el, el bloqueo no fija nada y la build no es "
+                     "reproducible. Generalo una vez con `./gradlew dependencies --write-locks` "
+                     "y commitealo; se regenera con el mismo comando cada vez que cambien las "
+                     "dependencias")
+        )
+
     return hallazgos
 
 
@@ -484,13 +525,17 @@ def main() -> int:
     raiz = pathlib.Path(sys.argv[4])
 
     def _texto(ruta: pathlib.Path) -> str:
-        return ruta.read_text(encoding="utf-8") if ruta.is_file() else ""
+        # `leer_utf8` en vez de `read_text`: un `exclude.xml` o un
+        # `decisiones.md` guardados desde PowerShell con `>` salen en UTF-16,
+        # y la traza `UnicodeDecodeError ... 0xff` no le dice a nadie que hacer.
+        return contrato.leer_utf8(ruta) if ruta.is_file() else ""
 
     hallazgos = comprobar(
         datos, xml, clases,
         gradle=_texto(raiz / "build.gradle"),
         exclusiones=_texto(raiz / "config" / "spotbugs" / "exclude.xml"),
         decisiones=_texto(raiz / "docs" / "decisiones.md"),
+        lockfile=(raiz / "gradle.lockfile").is_file(),
     )
     # PORTANTE `clases`, y no la regla de «todas las unidades a cero»: esta
     # puerta declara tres unidades, asi que `0 clases, 1 entradas, 1 salidas`

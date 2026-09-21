@@ -19,10 +19,14 @@ Cubre únicamente el modo **CREAR** (Fase 1 del proyecto): generación desde cer
 La spec de referencia es `docs/superpowers/specs/2026-08-08-appian-plugin-forge-design.md`
 (repo de desarrollo; no viaja con el plugin — «la spec» en el resto de este documento); las
 secciones citadas son las suyas. Las rutas con el prefijo `${CLAUDE_PLUGIN_ROOT}/` apuntan a
-ficheros del propio plugin: Claude Code define esa variable cuando la skill corre como plugin
-cargado (`--plugin-dir` o instalado), y si se trabaja dentro del repo del forge sin cargarlo
-como plugin, se sustituye por la raíz `appian-plugin-forge/`. Las referencias de este
-directorio se citan enteras la primera vez y como `referencias/<fichero>.md` a partir de ahí.
+ficheros del propio plugin. Ese prefijo es un **marcador** —`CLAUDE_PLUGIN_ROOT`, con la sintaxis
+`${…}`— que Claude Code **sustituye por la ruta absoluta del plugin al cargar este fichero**
+(`--plugin-dir` o instalado): con el plugin cargado, estas líneas ya llegan con la ruta puesta y
+no hay nada que traducir. **No es una variable de entorno** (`printenv` la devuelve vacía, medido
+el 21-sep-2026 con el plugin cargado), así que donde el marcador aparezca literal —trabajando
+dentro del repo del forge sin cargarlo como plugin, o en una referencia abierta con `Read`— se
+sustituye a mano por la raíz del plugin: `appian-plugin-forge/` en el repo. Las referencias de
+este directorio se citan enteras la primera vez y como `referencias/<fichero>.md` a partir de ahí.
 
 **Y lo mismo vale para los tres agentes que esta skill lanza**, que es menos evidente porque no
 son rutas: `appian-plugin-forge:<nombre>` solo resuelve como `subagent_type` con el plugin
@@ -81,6 +85,15 @@ y empaquetado que enumera
 están en la raíz—, pero declararlo es la red, no el procedimiento: el procedimiento es volver a
 verificar.
 
+**Antes del paso 1, un minuto de comprobación de entorno**, porque lo que falte aquí se descubre
+en el paso 4 con el proyecto ya andamiado: `java -version` tiene que decir **17** —la plantilla
+clava el *toolchain* a 17 y no descarga otro: con solo un JDK 21, Gradle para en «No matching
+toolchains found»—; `git --version`, porque el proyecto generado es un repositorio y cada tarea es
+un commit; `python --version` 3.11 o superior; y red en la primera build, que baja Gradle 8.14.3
+de `services.gradle.org` y el SDK de Maven Central (unos 230 MB, varios minutos). Gradle no se
+instala: cada proyecto trae su wrapper. Sin Java, `./gradlew` lo dice claro —`JAVA_HOME is not set
+and no 'java' command could be found`—, pero para entonces ya hay un proyecto a medias.
+
 ### 1 · ENTREVISTA (DEFINE)
 
 Una pregunta por turno, sin opción múltiple, formato `Q` / `GUESS` / `CONFIDENCE`. El tipo de
@@ -106,9 +119,11 @@ se escribe en el contrato como `[confirmacion]` / `usuario_confirmo = true`
 (`referencias/entrevista.md`) — sin ese bloque, la puerta determinista de arriba nunca cierra en
 verde, así que la propia herramienta hace imposible generar sobre un contrato que nadie confirmó.
 
-> **En PowerShell, esta línea y todas las `${CLAUDE_PLUGIN_ROOT}` de este documento se traducen a
-> `$env:CLAUDE_PLUGIN_ROOT`** — si no, la ruta se expande a cadena vacía sin avisar, y si la
-> variable no está puesta en el entorno falla igual de callado. Detalle y por qué, en
+> **En PowerShell, el marcador `CLAUDE_PLUGIN_ROOT` no se copia tal cual**: `${…}` es sintaxis de
+> variable de sesión y se expande a cadena vacía sin avisar. Y traducirlo a `$env:CLAUDE_PLUGIN_ROOT`
+> no arregla nada, porque **no es una variable de entorno y está vacía**. Con el plugin cargado esta
+> línea ya llega con la ruta absoluta y no hay nada que traducir; si el marcador aparece literal, se
+> escribe la ruta absoluta del plugin, entre comillas dobles. Detalle y por qué, en
 > `${CLAUDE_PLUGIN_ROOT}/skills/crear-plugin-appian/referencias/entorno-windows.md`.
 
 Un `AVISO` **no es una `FALTA`** y no bloquea, pero tampoco sale gratis, y el único que existe
@@ -141,6 +156,10 @@ Gradle, `appian-plugin.xml` y —salvo en servlets, que no cargan bundle— los 
 `_en_US`/`_es_ES`, y deja una copia literal del contrato en `<directorio-destino>/docs/contrato.md`,
 de donde la leen VERIFICACIÓN (paso 5) y DOSSIER (paso 7). Es sustitución de variables: sale
 bien siempre, y son justo los ficheros donde un error cuesta un ciclo de aprobación entero.
+Deja también `docs/decisiones.md` —la pieza 2 del dossier, y donde `R-F14` busca la firma de cada
+exclusión activa de SpotBugs—, que en un smart service nace ya con una decisión escrita: la
+exclusión de `CRLF_INJECTION_LOGS` que la propia plantilla activa, con su porqué y con la
+condición bajo la que deja de valer. Si el fichero ya existe, no se toca.
 
 **El dominio NO se andamia, y saberlo importa:** la separación dominio / adaptador (spec
 §5.6, D19) la construye el paso 4, no éste. El convenio es `<paquete>.dominio`
@@ -149,13 +168,23 @@ referencie el SDK** — que es lo que permite que los tests JUnit corran sin car
 columna de insumo del certificado declara cuántas clases de dominio miró: un andamiaje recién
 generado dice `0 clases de dominio`, que es legítimo y visible, no un aprobado.
 
-**Dos trampas al escribir los tests, las dos descubiertas construyendo de verdad.**
+**Tres trampas al escribir los tests, las tres descubiertas construyendo de verdad.**
 `SmartServiceException.Builder.build()` **lanza `NullPointerException` fuera del runtime de
 Appian** —resuelve el bundle contra un contexto que en JUnit no existe—, así que el test del
 adaptador que ejercita el camino de error se monta con `mockConstruction`, como hace el plug-in
-de referencia; no es un fallo tuyo ni de la plantilla. Y si el perfil es RIGUROSO, el certificado
+de referencia; no es un fallo tuyo ni de la plantilla. Si el perfil es RIGUROSO, el certificado
 busca clases `*FuzzTest`/`*PropertyTest` **por el nombre**: nombrarlas así al escribirlas cuesta
 cero, y descubrirlo en el paso 5 cuesta otra pasada (el detalle, en `referencias/certificado.md`).
+Y también en RIGUROSO, **PIT y JaCoCo no cuentan igual un constructor privado vacío**: JaCoCo lo
+filtra de su métrica de líneas y PIT no, así que una clase de utilidad estática pasa la cobertura
+de JaCoCo y falla el umbral de PIT (`Line coverage of 88 is below threshold of 90`) sin que el
+mensaje diga qué líneas. La salida es no hacerla estática —instancia inmutable en un campo
+`final` del adaptador—, nunca bajar el umbral.
+
+**En RIGUROSO, antes de cerrar el primer slice:** `./gradlew dependencies --write-locks` y commitear
+el `gradle.lockfile` que deja. `build.gradle` activa `dependencyLocking`, pero Gradle no escribe
+ni exige el lockfile por su cuenta: sin él el cierre de dependencias no fija nada, y `R-F15` lo
+pone en rojo. Se regenera con el mismo comando cada vez que cambien las dependencias.
 
 **El andamiaje no crea el repositorio, y el paso 4 lo necesita:** si `<directorio-destino>` no
 está dentro de un repositorio, `git init` ahí antes del primer slice. El paso 4 commitea una vez
@@ -218,10 +247,8 @@ decisión depende de ella, nunca con la duda general —«Necesito saber
 respuesta>`. Marca el hecho como no verificado contra el JAR.»—. Es lo que manda spec §6.3: cuando no hay
 fundamento, se marca; no se aparenta certeza.
 
-**Prerequisitos de entorno**, que esta skill da por supuestos y conviene comprobar una vez: JDK 17
-(`javap -version`; el mismo que compila los plug-ins), acceso de red a Maven Central para que
-`./gradlew build` resuelva el SDK la primera vez, y `python` para los validadores. Gradle no hace
-falta instalarlo: cada proyecto generado trae su wrapper.
+**Prerequisitos de entorno**: los de la comprobación previa al paso 1 —JDK 17, git, Python 3.11+ y
+red la primera vez—. `javap` viene con ese mismo JDK, el que compila los plug-ins.
 
 **La única excepción admitida al `BUILD SUCCESSFUL`, y no es una avería: `SECSP` en un
 servlet.** Un servlet recién andamiado **no pasa `./gradlew build`** hasta que se implemente

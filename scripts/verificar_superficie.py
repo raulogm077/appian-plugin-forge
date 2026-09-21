@@ -96,9 +96,24 @@ def comprobar_dominio_sin_sdk(clases: list, paquetes_dominio: list[str]) -> list
 
 
 def cargar_clases(directorio: pathlib.Path) -> list:
+    import struct
+
     import classfile
 
-    return [classfile.leer(p) for p in sorted(directorio.rglob("*.class"))]
+    clases = []
+    for ruta in sorted(directorio.rglob("*.class")):
+        try:
+            clases.append(classfile.leer(ruta))
+        except (IndexError, struct.error, EOFError) as error:
+            # Un `.class` truncado --a medio escribir, o cortado por un build
+            # interrumpido-- moria con `IndexError: index out of range` SIN el
+            # nombre del fichero, que es lo unico que hace falta para
+            # arreglarlo. Prueba adversaria del 21-sep-2026, caso 10a.
+            raise ValueError(
+                f"{ruta}: no se pudo leer como fichero .class ({type(error).__name__}: "
+                f"{error}); si esta truncado, vuelve a construir con `./gradlew build`"
+            ) from None
+    return clases
 
 
 RUTA_INVENTARIO_POR_DEFECTO = "build/reports/inventario-api.json"

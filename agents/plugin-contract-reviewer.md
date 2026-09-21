@@ -36,6 +36,11 @@ mecanico; tu miras lo que solo se puede juzgar leyendo.
    del cliente** a donde el contrato no dice (mirar con lupa cuando declara red
    o datos personales), y **saltarse la seguridad de Appian** dando acceso a
    contenido que el usuario que invoca no tendria por su cuenta.
+9. **Cada exclusion activa de `config/spotbugs/exclude.xml` frente a su motivo
+   en `docs/decisiones.md`.** La regla R-F14 solo comprueba que el patron se
+   MENCIONE; si el motivo escrito justifica de verdad esa exclusion --y no es
+   una mencion de paso, o un «no se excluye» que luego se excluyo-- lo juzgas
+   tu, que eres el unico que lee las dos cosas juntas.
 
 ## Rules
 

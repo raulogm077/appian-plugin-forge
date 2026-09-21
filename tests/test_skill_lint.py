@@ -667,26 +667,36 @@ def test_el_README_no_puede_nombrar_scripts_NI_VERSIONES_que_ya_no_existen():
     # `tipos-de-plugin.md` no cita ningun asset y no tiene por que.
     assert assets_vistos, "ningun fichero de PROSA nombra ya un asset: seria un verde vacuo"
 
-    # El snippet de `marketplace.json` copia a mano DOS campos de `plugin.json`,
-    # en la misma linea. El ciclo 8 ato `version` y dejo `name` suelto: un
-    # renombrado coherente del plugin pasaba entero en verde, y
-    # `claude plugin validate --strict` tampoco cruza los dos manifiestos.
+    # Desde el 21-sep-2026 `.claude-plugin/marketplace.json` VIAJA con el plugin
+    # (antes el README ensenaba a escribirlo a mano). Su entrada copia campos de
+    # `plugin.json`, y `claude plugin validate` no cruza los dos manifiestos:
+    # valida el que encuentra. Lo que se ata aqui es que los dos digan lo mismo
+    # --`version` gobierna `/plugin update`; `name` es el nombre de despacho--
+    # y que el README instale con el par `<plugin>@<marketplace>` real.
     manifiesto = json.loads((RAIZ / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
-    # Acotado a la ENTRADA del marketplace, no al README entero: el snippet
-    # trae ademas `"owner": {"name": ...}`, que es el autor y no el plugin, y
-    # un barrido global lo confundiria con el nombre de despacho. Es la
-    # direccion de falso positivo que la lente del ciclo 8 anoto para `version`.
-    entrada = re.search(r'"plugins":\s*\[(.*?)\]', readme, re.S)
-    assert entrada, "el README ya no ensena el snippet de `marketplace.json`"
-    for campo in ("version", "name"):
-        copiados = set(re.findall(rf'"{campo}":\s*"([^"]+)"', entrada.group(1)))
-        assert copiados == {manifiesto[campo]}, (
-            f"el README ensena a crear un marketplace que declara {campo}="
-            f"{sorted(copiados)} y el plugin va por «{manifiesto[campo]}»"
+    marketplace = json.loads(
+        (RAIZ / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8")
+    )
+    entradas = [p for p in marketplace["plugins"] if p.get("name") == manifiesto["name"]]
+    assert len(entradas) == 1, (
+        f"marketplace.json deberia declarar exactamente una entrada llamada "
+        f"«{manifiesto['name']}» y declara {len(entradas)}"
+    )
+    entrada = entradas[0]
+    for campo in ("version", "description"):
+        assert entrada.get(campo) == manifiesto[campo], (
+            f"marketplace.json declara {campo}={entrada.get(campo)!r} y plugin.json "
+            f"va por {manifiesto[campo]!r}: `/plugin update` mira el primero"
         )
-    # La orden de instalacion lleva el nombre dos veces (`plugin@marketplace`).
-    assert f"/plugin install {manifiesto['name']}@" in readme, (
-        f"la orden de instalacion del README no nombra a «{manifiesto['name']}»"
+    assert entrada["source"] == {"source": "github", "repo": "raulogm077/appian-plugin-forge"}, (
+        "la entrada del marketplace ya no apunta al repo publico de GitHub"
+    )
+    # La orden de instalacion lleva los dos nombres (`plugin@marketplace`), y
+    # los dos son datos, no prosa: el del plugin y el del marketplace.
+    orden = f"/plugin install {manifiesto['name']}@{marketplace['name']}"
+    assert orden in readme, f"el README no ensena la orden de instalacion real «{orden}»"
+    assert f"/plugin marketplace add {entrada['source']['repo']}" in readme, (
+        "el README no ensena a anadir el marketplace desde el repo publico"
     )
 
 
@@ -970,7 +980,9 @@ PATRON_RUTA_CITADA = r"`([A-Za-z0-9_.<>*-]+(?:/[A-Za-z0-9_.<>*-]*)+)`"
 # raiz y tiene que existir. Literal propio y no `RAIZ.iterdir()`: derivarlo del
 # disco haria que borrar `agents/` encogiera el conjunto auditado en vez de
 # ponerlo rojo.
-FAMILIAS_DEL_MAPA = ("scripts", "assets", "skills", "agents", "evals", "tests")
+FAMILIAS_DEL_MAPA = (
+    "scripts", "assets", "skills", "agents", "evals", "tests", ".claude-plugin",
+)
 
 # Y los que NO, que es la excepcion explicita y estrecha. No es un `if` que
 # apague la comprobacion: es la lista cerrada de los OTROS DOS arboles de los
@@ -1093,7 +1105,9 @@ VENTANA_COLETILLA = 200
 # Toda la prosa que viaja: `PROSA` mas el mapa y los dos assets de texto. Deriva
 # de `PROSA`, que a su vez deriva de `REFERENCIAS`: una referencia nueva entra
 # sola en este barrido.
-PROSA_QUE_VIAJA = (*PROSA, MAPA, "assets/reglas-de-validacion.md", "assets/dossier.md")
+PROSA_QUE_VIAJA = (
+    *PROSA, MAPA, "CHANGELOG.md", "assets/reglas-de-validacion.md", "assets/dossier.md",
+)
 
 # El suelo, con la cita del hallazgo como ancla literal.
 CITA_ANCLA_DE_DESARROLLO = (

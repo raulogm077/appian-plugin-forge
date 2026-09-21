@@ -92,6 +92,32 @@ NOTA_SECSP = """  <!-- ABIERTO, a proposito. FindSecBugs marca `SERVLET_PARAMETE
   </Match>
   -->"""
 
+# docs/decisiones.md nace con el andamiaje. Es la pieza 2 del dossier y lo que
+# R-F14 lee para saber si una exclusion de SpotBugs esta firmada; y el
+# andamiaje de smart-service deja UNA exclusion activa (EXCLUSION_CRLF, arriba,
+# con su porque), asi que firmarla es del andamiaje, no de quien implementa.
+# Sin esto, al generalizar R-F14 a los cuatro tipos (21-sep-2026) todo smart
+# service recien generado nacia NOT_READY por una exclusion que no habia
+# escrito nadie. Solo se escribe si no existe: regenerar sobre un proyecto en
+# marcha no puede pisar decisiones ya tomadas.
+DECISIONES_INICIALES = """# Decisiones de diseño
+
+Cada decisión que se aparta del andamiaje, o que una puerta exige firmar, con su porqué. Es la
+pieza 2 del dossier y lo que la regla `R-F14` lee para saber si una exclusión de SpotBugs está
+firmada: una exclusión activa en `config/spotbugs/exclude.xml` que no se mencione aquí pone la
+verificación en rojo.
+"""
+
+DECISION_CRLF = """
+## Exclusión de SpotBugs: `CRLF_INJECTION_LOGS` en `{clase}`
+
+Viene del andamiaje, no de quien implementa. El único dato que la clase generada concatena en un
+log es un UUID recién generado (`UUID.randomUUID().toString()`), que no puede contener CR ni LF;
+el detalle del error va al log vía el `Throwable`, nunca por la cadena. **Deja de valer si se
+añaden datos de entrada al mensaje**: entonces se retira la exclusión de
+`config/spotbugs/exclude.xml`, o se reescribe esta decisión con el argumento nuevo.
+"""
+
 # Va al plug-in generado, no a este repositorio. Sin el, `core.autocrlf=true`
 # convierte gradlew a CRLF en el siguiente checkout y el script deja de
 # arrancar en Unix -- el mismo tipo de fallo que ya rompio el parseo del
@@ -571,6 +597,17 @@ def generar(
     ruta_atributos.write_text(GITATTRIBUTES_GENERADO, encoding="utf-8")
     escritos.append(ruta_atributos)
 
+    # Ver DECISIONES_INICIALES: la firma de la exclusion que el propio
+    # andamiaje activa, y solo si nadie ha escrito ya el fichero.
+    ruta_decisiones = destino / "docs" / "decisiones.md"
+    if not ruta_decisiones.exists():
+        texto_decisiones = DECISIONES_INICIALES
+        if tipo == "smart-service":
+            clase_cualificada = f"{datos['plugin']['paquete']}.{subdir}.{variables['CLASE']}"
+            texto_decisiones += DECISION_CRLF.format(clase=clase_cualificada)
+        ruta_decisiones.write_text(texto_decisiones, encoding="utf-8")
+        escritos.append(ruta_decisiones)
+
     return escritos
 
 
@@ -580,7 +617,11 @@ def main() -> int:
     if len(sys.argv) != 3:
         print("uso: andamiar.py <contrato.md> <directorio-destino>")
         return 2
-    datos = contrato.cargar(pathlib.Path(sys.argv[1]))
+    try:
+        datos = contrato.cargar(pathlib.Path(sys.argv[1]))
+    except contrato.ContratoIlegible as error:
+        print(f"ERROR contrato: {error}")
+        return 2
     faltantes = contrato.validar(datos)
     if faltantes:
         print("El contrato esta incompleto; no se genera nada:")

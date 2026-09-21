@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import pathlib
 import re
 import subprocess
@@ -41,6 +42,44 @@ def test_la_CLI_del_orquestador_arranca_y_deja_certificado(tmp_path):
     # hay puertas en rojo que no son las dos estructurales.
     assert proceso.returncode == 1
     assert vt.NO_LISTO in certificado.read_text(encoding="utf-8")
+
+
+def test_la_consola_no_puede_matar_el_veredicto_por_su_codificacion(tmp_path):
+    """Medido el 21-sep-2026 sobre un clon limpio: con `PYTHONIOENCODING=cp850`
+    --la pagina de codigos OEM de un Windows en espanol-- el eco del certificado
+    por consola moria con `UnicodeEncodeError` en el `—` de las filas, con traza y
+    exit 1, DESPUES de haber escrito el fichero correcto. Aqui se fuerza la peor
+    consola posible, ASCII estricto, y se exige lo mismo que con UTF-8: fichero
+    escrito, sin traceback y el codigo de salida del veredicto, no de un reventon.
+    """
+    proceso = subprocess.run(
+        [sys.executable, str(RAIZ_SCRIPTS / "verificar_todo.py"), str(tmp_path), "estandar"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+        env={**os.environ, "PYTHONIOENCODING": "ascii:strict", "PYTHONUTF8": "0"},
+    )
+    certificado = tmp_path / "docs" / "CERTIFICADO.md"
+    assert certificado.is_file(), f"no dejo certificado; stderr:\n{proceso.stderr[-2000:]}"
+    assert "Traceback" not in proceso.stderr, proceso.stderr[-2000:]
+    assert proceso.returncode == 1, proceso.stderr[-2000:]
+    # El fichero es la evidencia y va en UTF-8 pase lo que pase en la consola.
+    assert vt.NO_LISTO in certificado.read_text(encoding="utf-8")
+    assert "—" in certificado.read_text(encoding="utf-8")
+
+
+def test_sin_raiz_no_se_escribe_ningun_certificado(tmp_path):
+    """Hasta el 21-sep-2026 `raiz` era opcional con el cwd por defecto, y un
+    `python scripts/verificar_todo.py` lanzado desde la raiz del plugin dejaba
+    un `docs/CERTIFICADO.md` dentro del propio forge. Ahora la orden sin raiz
+    muere en argparse (codigo 2, el de «uso incorrecto») sin tocar el disco.
+    """
+    proceso = subprocess.run(
+        [sys.executable, str(RAIZ_SCRIPTS / "verificar_todo.py")],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+        cwd=tmp_path,
+    )
+    assert proceso.returncode == 2, proceso.stderr[-500:]
+    assert "raiz" in proceso.stderr
+    assert not (tmp_path / "docs").exists(), "escribio un certificado sin que nadie diera la raiz"
 
 
 def _git(destino, *argumentos):

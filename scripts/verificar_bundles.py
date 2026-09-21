@@ -273,8 +273,10 @@ def main() -> int:
         return 2
     datos = contrato.cargar(pathlib.Path(sys.argv[1]))
     raiz = pathlib.Path(sys.argv[2])
+    # `leer_utf8`: un `.properties` guardado desde PowerShell con `>` sale en
+    # UTF-16 y la traza no dice que hacer; el mensaje de `leer_utf8` si.
     bundles = {
-        str(p.relative_to(raiz)).replace("\\", "/"): p.read_text(encoding="utf-8")
+        str(p.relative_to(raiz)).replace("\\", "/"): contrato.leer_utf8(p)
         for p in raiz.rglob("*.properties")
     }
     if datos["plugin"]["tipo"] == "servlet":

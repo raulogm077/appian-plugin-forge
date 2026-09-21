@@ -864,7 +864,7 @@ def test_el_aviso_de_POWERSHELL_va_JUNTO_al_primer_comando_que_lo_necesita():
     )
     desde = max(0, primera - LINEAS_DE_MARGEN)
     ventana = "\n".join(lineas[desde: primera + 1 + LINEAS_DE_MARGEN])
-    assert "$env:CLAUDE_PLUGIN_ROOT" in ventana, (
+    assert "PowerShell" in ventana and "cadena vacía" in ventana, (
         f"el primer comando con `${{CLAUDE_PLUGIN_ROOT}}` esta en la linea {primera + 1} y en "
         f"las {LINEAS_DE_MARGEN} lineas de alrededor no hay aviso de que en PowerShell eso se "
         f"expande a cadena vacia: quien trabaje en Windows se come el fallo silencioso sin "
@@ -872,18 +872,28 @@ def test_el_aviso_de_POWERSHELL_va_JUNTO_al_primer_comando_que_lo_necesita():
     )
 
 
-def test_el_aviso_cubre_la_variable_AUSENTE_y_no_solo_la_sintaxis():
-    """`$env:` con la variable sin poner falla igual de callado. El aviso que
-    solo traduce la sintaxis deja al lector a mitad de camino.
+def test_el_aviso_NO_manda_a_una_variable_de_entorno_que_no_existe():
+    """Hasta el 21-sep-2026 el aviso mandaba traducir el marcador a
+    `$env:CLAUDE_PLUGIN_ROOT`. Medido con el plugin cargado de verdad
+    (`--plugin-dir`): Claude Code NO define esa variable --`printenv` la devuelve
+    vacia--; sustituye el marcador por la ruta absoluta al cargar SKILL.md. El
+    consejo viejo llevaba, con el plugin instalado, a una ruta vacia igual de
+    silenciosa que la que decia evitar. El aviso tiene que decir que la variable
+    no existe y que la salida es la ruta absoluta, no `$env:`.
     """
     texto = SKILL_MD.read_text(encoding="utf-8")
     bloque = next(
-        (b for b in texto.split("\n\n") if "$env:CLAUDE_PLUGIN_ROOT" in b), ""
+        (b for b in texto.split("\n\n") if "$env:CLAUDE_PLUGIN_ROOT" in b and "PowerShell" in b),
+        "",
     )
-    assert "no está puesta" in bloque or "no esta puesta" in bloque, (
-        "el aviso de PowerShell traduce la sintaxis pero ya no dice que hacer si la variable "
-        f"no existe en el entorno, que es el otro camino a la ruta vacia -> «{bloque[:200]}»"
+    assert bloque, "la SKILL ya no tiene el aviso de PowerShell que nombra `$env:CLAUDE_PLUGIN_ROOT`"
+    assert "no es una variable de entorno" in bloque, (
+        f"el aviso de PowerShell no dice que `$env:CLAUDE_PLUGIN_ROOT` no existe -> «{bloque[:200]}»"
     )
+    assert "ruta absoluta" in bloque, (
+        f"el aviso de PowerShell no dice cual es la salida (la ruta absoluta) -> «{bloque[:200]}»"
+    )
+    assert "se traducen a" not in bloque, "el aviso vuelve a mandar traducir a `$env:`"
 
 
 def test_el_aviso_de_rancidez_cita_EL_PASO_QUE_LA_SKILL_NUMERA():

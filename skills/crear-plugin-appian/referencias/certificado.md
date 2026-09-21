@@ -80,8 +80,9 @@ Falla cerrado, que es lo correcto, pero cuesta una pasada entera: si hay que lim
 20-sep-2026.
 
 **En PowerShell 5.1 ese comando no vale, y no es el único del pipeline que hay que traducir** —ni
-el `&&`, ni los `${CLAUDE_PLUGIN_ROOT}` de las líneas ejecutables que publica la skill, que en
-PowerShell son sintaxis de variable de sesión y se expanden a cadena vacía sin avisar. La
+el `&&`, ni el marcador de la raíz del plugin cuando llega literal en las líneas ejecutables que
+publica la skill: en PowerShell es sintaxis de variable de sesión y se expande a cadena vacía sin
+avisar, y la salida es la ruta absoluta del plugin, no `$env:`, que está vacía. La
 traducción completa —el comando equivalente, por qué la redirección va dentro de `cmd` en vez de
 nativa, qué pierde el log de fidelidad frente a lo que Gradle escribió, y la codificación
 (UTF-16LE con BOM frente a UTF-8 con BOM)— vive en

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "appian-plugin-forge",
+  "description": "Marketplace del plugin appian-plugin-forge: genera plug-ins de Appian (Function, Writer Function, Smart Service y Servlet) desde una entrevista y los verifica en cuatro capas antes de entregarlos.",
+  "owner": {
+    "name": "Raul Gomez Moya",
+    "url": "https://github.com/raulogm077"
+  },
+  "plugins": [
+    {
+      "name": "appian-plugin-forge",
+      "version": "0.2.0",
+      "description": "Genera plugins de Appian (Function de lectura o writer, Smart Service y Servlet) desde una entrevista, y los verifica en cuatro capas hasta el limite de lo posible en local.",
+      "author": {
+        "name": "Raul Gomez Moya"
+      },
+      "homepage": "https://github.com/raulogm077/appian-plugin-forge",
+      "license": "MIT",
+      "keywords": ["appian", "plugin", "smart-service", "servlet", "expression-function", "java", "gradle"],
+      "source": {
+        "source": "github",
+        "repo": "raulogm077/appian-plugin-forge"
+      }
+    }
+  ]
+}
