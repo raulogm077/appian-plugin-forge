@@ -17,10 +17,7 @@
       "homepage": "https://github.com/raulogm077/appian-plugin-forge",
       "license": "MIT",
       "keywords": ["appian", "plugin", "smart-service", "servlet", "expression-function", "java", "gradle"],
-      "source": {
-        "source": "github",
-        "repo": "raulogm077/appian-plugin-forge"
-      }
+      "source": "./"
     }
   ]
 }

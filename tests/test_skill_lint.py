@@ -688,14 +688,22 @@ def test_el_README_no_puede_nombrar_scripts_NI_VERSIONES_que_ya_no_existen():
             f"marketplace.json declara {campo}={entrada.get(campo)!r} y plugin.json "
             f"va por {manifiesto[campo]!r}: `/plugin update` mira el primero"
         )
-    assert entrada["source"] == {"source": "github", "repo": "raulogm077/appian-plugin-forge"}, (
-        "la entrada del marketplace ya no apunta al repo publico de GitHub"
+    # `"./"` y NO `{"source": "github", "repo": ...}`: medido el 21-sep-2026,
+    # la forma `github` hace que `claude plugin install` clone por SSH
+    # (`git@github.com`), que en un equipo sin clave para GitHub --el de
+    # cualquiera que llegue nuevo-- muere con «Host key verification failed».
+    # `./` copia el plugin del propio clon del marketplace, que `marketplace
+    # add` ya trajo por HTTPS: sin segundo clon y sin SSH.
+    assert entrada["source"] == "./", (
+        "la entrada del marketplace ya no es relativa al propio repo: la forma `github` "
+        "clona por SSH y falla en un equipo sin clave"
     )
     # La orden de instalacion lleva los dos nombres (`plugin@marketplace`), y
     # los dos son datos, no prosa: el del plugin y el del marketplace.
     orden = f"/plugin install {manifiesto['name']}@{marketplace['name']}"
     assert orden in readme, f"el README no ensena la orden de instalacion real «{orden}»"
-    assert f"/plugin marketplace add {entrada['source']['repo']}" in readme, (
+    repo = entrada["homepage"].removeprefix("https://github.com/")
+    assert f"/plugin marketplace add {repo}" in readme, (
         "el README no ensena a anadir el marketplace desde el repo publico"
     )
 
