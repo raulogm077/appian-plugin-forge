@@ -161,3 +161,37 @@ def test_main_con_raiz_escribe_los_dos_ficheros(tmp_path):
     ficha = (tmp_path / "docs" / "FICHA_APPMARKET.md").read_text(encoding="utf-8")
     assert "Como invocarlo" in guia
     assert "Document Management" in ficha
+
+
+def test_la_guia_de_un_SERVLET_no_dice_que_no_devuelve_nada():
+    """`_Ninguna._` es literalmente cierto y practicamente falso.
+
+    Un servlet no declara `[[salidas]]` --lo que devuelve es el cuerpo de su
+    respuesta HTTP, que no es un campo tipado-- pero ese cuerpo es TODO su
+    valor. Salio de una prueba E2E del 21-sep-2026: el formato de respuesta
+    acabo viviendo solo en `docs/decisiones.md`, un documento interno de fase 2
+    que quien integra no lee, mientras la guia pensada para el integrador decia
+    «Ninguna».
+    """
+    datos = {"plugin": {"tipo": "servlet", "nombre": "Hora", "key": "hora",
+                        "application_version_min": "24.1"},
+             "entradas": [{"nombre": "zona", "tipo_java": "String", "descripcion": "IANA"}],
+             "salidas": []}
+
+    guia = gdu.render_guia_integracion(datos)
+
+    assert "_Ninguna._" not in guia, "la guia del servlet vuelve a decir que no devuelve nada"
+    assert "respuesta HTTP" in guia
+    assert "escribelo aqui a mano" in guia, "tiene que decir QUE hacer, no solo que falta"
+
+
+def test_los_demas_tipos_siguen_diciendo_Ninguna_cuando_no_hay_salidas():
+    """Suelo antivacuidad: el arreglo es del servlet, no de la funcion que
+    rellena la tabla. Una function sin salidas declaradas es otra cosa --ahi
+    `_Ninguna._` si es la verdad util-- y el texto largo seria ruido.
+    """
+    datos = {"plugin": {"tipo": "function", "nombre": "F", "key": "f",
+                        "application_version_min": "24.1"},
+             "entradas": [], "salidas": []}
+
+    assert "_Ninguna._" in gdu.render_guia_integracion(datos)

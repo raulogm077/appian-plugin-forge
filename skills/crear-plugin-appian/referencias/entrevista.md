@@ -67,6 +67,7 @@ se enseña todo lo demás.**
 | `entradas`/`salidas`: `tipo_java` | **Decidido** | Del sentido del dato. Ojo con los no inferibles (`R-F04`) y con `Timestamp`/`Time` |
 | `entradas[].required` | **Decidido, confirmado** | Se propone `ALWAYS` salvo que el usuario haya dicho que el dato puede faltar. Un primitivo no admite `OPTIONAL` (`R-F02`) |
 | `descripcion` de cada uno | **Decidido** | Se redacta y se enseña: acaba en el `.properties` que ve el diseñador |
+| `servlet.url_pattern`, `servlet.parametro` | **Decidido** | **Solo en `tipo = servlet`**, y los nombres son exactamente esos —`url_pattern` con guion bajo—. `url_pattern` es la ruta que declara el manifiesto (`/lo-que-sea`); `parametro`, el nombre del parámetro de petición que lee el andamiaje. Nadie los documentaba y había que sacarlos leyendo `andamiar.py`: lo dijo una prueba E2E del 21-sep-2026 |
 | Las seis de admisión y la séptima | **PREGUNTADO** | Son la tabla de abajo |
 
 ### Las subpaletas que existen (`clase.paleta`)

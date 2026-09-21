@@ -36,3 +36,17 @@ escriben los literales completos y se elige entre ellos —`valido ? "{\"valid\"
 "{\"valid\":false}"`— en vez de concatenar; el detector deja de tener rastro que seguir. Si de
 verdad hay que devolver texto del cliente, se escapa antes, y eso sí es una exclusión que
 justificar en `docs/decisiones.md`, con R-F14 mirando.
+
+**Hay un tercer camino, y es el que sirve cuando el cuerpo no es ninguno de los dos casos**
+—medido en una prueba E2E del 21-sep-2026, con un JSON de varios campos derivados—: **construirlo
+con `StringBuilder.append()` en pasos separados** en vez de con `+`, mismo contenido y mismo
+escapado. Eso rompe el rastro; lo que **no** basta es extraer el cálculo a otro método y devolver
+un objeto, porque FindSecBugs propaga la marca **al objeto entero** que devuelve un método con un
+parámetro tintado, no solo al campo que de verdad deriva de él. Se probó y falló antes de dar con
+lo de `StringBuilder`.
+
+**Y un tercer patrón que no es de seguridad pero llega por el mismo sitio:**
+`SE_TRANSIENT_FIELD_NOT_RESTORED`, si el servlet guarda una colaboradora en un campo de instancia.
+`HttpServlet` es `Serializable`, así que un campo `transient` no se restauraría. Si la
+colaboradora **no tiene estado** —el caso normal en un adaptador—, la salida es un `static final`:
+se comparte sin riesgo y deja de entrar en la (de)serialización. Tampoco se excluye.

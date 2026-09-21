@@ -107,6 +107,32 @@ def _parametros(datos: dict) -> str:
     )
 
 
+def _salidas_de_la_guia(datos: dict, tipo: str) -> str:
+    """Un `_Ninguna._` en un servlet es literalmente cierto y practicamente falso.
+
+    Un servlet no declara `[[salidas]]` en el contrato --y hace bien: lo que
+    devuelve es el cuerpo de su respuesta HTTP, que no es un campo tipado-- pero
+    ESE cuerpo es todo su valor. Escribir «Ninguna» en la guia que lee quien
+    integra le dice justo lo contrario de lo que necesita saber.
+
+    Aqui no se inventa el formato: no consta en ningun sitio que este script
+    pueda leer. Lo que se hace es decir que existe, que es el contrato real con
+    quien llame, y que hay que escribirlo. Salio de una prueba E2E del
+    21-sep-2026, donde el formato acabo viviendo solo en `docs/decisiones.md`,
+    un documento interno que quien integra no lee.
+    """
+    campos = datos.get("salidas", [])
+    if tipo == "servlet" and not any(isinstance(c, dict) for c in campos):
+        return (
+            "Un servlet no declara `[[salidas]]` en el contrato: lo que devuelve es el **cuerpo "
+            "de su respuesta HTTP**, y ese formato es el contrato real con quien lo llame.\n\n"
+            "**No consta en `docs/contrato.md`, asi que escribelo aqui a mano**: codigos de "
+            "estado, tipo de contenido y forma del cuerpo. Sin eso, quien integre no sabe que "
+            "parsear."
+        )
+    return _tabla_campos(campos, con_required=False)
+
+
 def _tabla_campos(campos: list, con_required: bool) -> str:
     if not any(isinstance(c, dict) for c in campos):
         return "_Ninguna._"
@@ -172,7 +198,7 @@ def render_guia_integracion(datos: dict, raiz=None) -> str:
         "",
         "## Salidas",
         "",
-        _tabla_campos(datos.get("salidas", []), con_required=False),
+        _salidas_de_la_guia(datos, tipo),
         "",
         "## Version minima de Appian requerida",
         "",
