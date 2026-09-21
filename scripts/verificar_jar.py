@@ -14,8 +14,10 @@ carga.
 from __future__ import annotations
 
 import pathlib
+import xml.etree.ElementTree as ET
 import zipfile
 
+import contrato
 from verificar_framework import Hallazgo
 
 TOPE_TAMANO_BYTES = 15 * 1024 * 1024
@@ -55,6 +57,14 @@ def comprobar(
 
     with zipfile.ZipFile(ruta_jar) as z:
         entradas = [i.filename for i in z.infolist()]
+        # El manifiesto SE LEE DEL JAR, no del arbol de fuentes: esta capa
+        # juzga lo que se entrega. Un `processResources` que dejara fuera un
+        # modulo, o un XML editado a mano dentro del artefacto, no se veria
+        # desde `src/main/resources`.
+        manifiesto_jar = (
+            z.read("appian-plugin.xml").decode("utf-8-sig")
+            if "appian-plugin.xml" in entradas else ""
+        )
 
     en_lib = [e for e in entradas if e.startswith("META-INF/lib/") and e.endswith(".jar")]
 
@@ -101,15 +111,63 @@ def comprobar(
                          f"META-INF/lib; seria un NoClassDefFoundError tras desplegar")
             )
 
-    # R-J06 · el bundle _en_US tiene que viajar dentro del JAR.
-    if plugin["tipo"] != "servlet":
-        nombre_bundle = datos_contrato.get("bundle", {}).get("nombre", "")
-        ruta_bundle = f"{plugin['key'].replace('.', '/')}/{nombre_bundle}_en_US.properties"
-        if ruta_bundle not in entradas:
+    # R-J06 · UN BUNDLE `_en_US` POR MODULO, dentro del JAR y llamado como la
+    # key de SU modulo.
+    #
+    # Esta regla derivaba su unica ruta de `bundle.nombre` del contrato, igual
+    # que R-B01, asi que las dos capas se daban la razon con el mismo dato: un
+    # manifiesto con cinco modulos y un solo bundle pasaba las cuatro puertas y
+    # moria al desplegar, en el PRIMER modulo, con
+    #   «Module <k> is missing the following internationalization bundle(s) for
+    #    Locale en_US: [<key>.<k>] (APNX-1-4200-000)».
+    # Appian se detiene ahi, asi que los modulos siguientes ni se comprueban:
+    # un solo fallo basta para que no despliegue nada.
+    #
+    # Ahora la lista de modulos sale del MANIFIESTO QUE VIAJA EN EL JAR, que es
+    # el mismo fichero que leera Appian. Es la comprobacion mas fiel que se
+    # puede hacer sin un servidor delante.
+    if manifiesto_jar.strip():
+        try:
+            modulos = contrato.modulos_con_bundle(manifiesto_jar)
+        except ET.ParseError as error:
             hallazgos.append(
                 Hallazgo("R-J06", "error",
-                         f"falta {ruta_bundle} dentro del JAR; sin bundle el plug-in no despliega")
+                         f"el appian-plugin.xml del JAR no se puede leer ({error})")
             )
+            modulos = []
+        if not modulos and plugin["tipo"] != "servlet":
+            # Cero modulos es cero comprobaciones: sin esta guarda, la regla se
+            # daria la razon a si misma sobre un manifiesto que no declara nada.
+            hallazgos.append(
+                Hallazgo("R-J06", "error",
+                         "el manifiesto del JAR no declara ningun <function> ni "
+                         "<smart-service>: no hay modulo al que exigirle bundle, y un "
+                         "plug-in que no es servlet tiene que declarar al menos uno")
+            )
+        for etiqueta, key_modulo in modulos:
+            if not key_modulo:
+                hallazgos.append(
+                    Hallazgo("R-J06", "error",
+                             f"el manifiesto del JAR declara un <{etiqueta}> sin key")
+                )
+                continue
+            ruta_bundle = contrato.ruta_de_bundle(plugin["key"], key_modulo, "en_US")
+            if ruta_bundle not in entradas:
+                hallazgos.append(
+                    Hallazgo("R-J06", "error",
+                             f"falta {ruta_bundle} dentro del JAR: el modulo "
+                             f"<{etiqueta} key=\"{key_modulo}\"> se queda sin bundle y el "
+                             f"plug-in NO DESPLIEGA (APNX-1-4200-000)")
+                )
+    elif plugin["tipo"] != "servlet":
+        # Sin manifiesto no se sabe que modulos hay. R-J01 ya dice que falta;
+        # aqui se deja constancia de que esta regla no ha podido mirar, en vez
+        # de callar y parecer verde.
+        hallazgos.append(
+            Hallazgo("R-J06", "error",
+                     "sin appian-plugin.xml en el JAR no se puede comprobar que cada modulo "
+                     "tenga su bundle _en_US")
+        )
 
     # R-J07 · licencia y notices.
     for obligatorio in ("META-INF/LICENSE", "META-INF/THIRD_PARTY_NOTICES.md"):

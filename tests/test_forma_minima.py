@@ -171,7 +171,13 @@ def test_el_validador_de_bundles_aprueba_lo_que_el_andamiador_escribe(tipo, tmp_
         f"hay un bundle con el nombre base vacio: {sorted(bundles)}"
     )
 
-    errores = [h for h in verificar_bundles.comprobar(datos, bundles) if h.severidad == "error"]
+    # El manifiesto recien andamiado, no None: R-B07 compara la key de cada
+    # modulo con el nombre del .properties, y es la pareja que emite el propio
+    # andamiador. Si alguna vez vuelven a divergir, este test lo ve sobre los
+    # cuatro tipos antes que ningun Appian.
+    manifiesto = (raiz / "appian-plugin.xml").read_text(encoding="utf-8")
+    hallazgos = verificar_bundles.comprobar(datos, bundles, manifiesto)
+    errores = [h for h in hallazgos if h.severidad == "error"]
     assert errores == [], [f"{h.regla}: {h.mensaje}" for h in errores]
 
 

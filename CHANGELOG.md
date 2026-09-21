@@ -3,6 +3,53 @@
 Por versión, la más reciente arriba. Lo que afecta a plug-ins ya generados va al principio de su
 entrada.
 
+## 2026-09-21 · versión 0.2.2 — el bundle se llama como la key de su módulo
+
+**Corrige un fallo que impedía desplegar todo plug-in de tipo `function` o `writer-function`
+generado hasta aquí.** Appian resuelve el bundle de recursos de cada módulo como
+`<key del plug-in>.<key del módulo>`, así que el `.properties` tiene que llamarse como la `key`
+del módulo que lo usa. La plantilla del manifiesto de `function` ponía en esa `key` el nombre de
+la función, mientras el fichero se llamaba como `[bundle] nombre`. Cada cosa parecía correcta por
+separado y ninguna regla cruzaba las dos, de modo que el plug-in pasaba las cuatro capas y Appian
+se negaba a cargarlo:
+
+```
+Unable To Deploy Plug-in
+The Plug-in <key> Module <key del módulo> is missing the following internationalization
+bundle(s) for Locale en_US: [<key>.<key del módulo>] (APNX-1-4200-000)
+```
+
+Lo que afecta a plug-ins **ya generados**:
+
+- **Los de tipo `function` y `writer-function` cuyo `[funcion] nombre` no coincida con
+  `[bundle] nombre` no despliegan**, aunque su certificado diga `READY_FOR_APPIAN_SUBMISSION`. El
+  arreglo es de una línea en `src/main/resources/appian-plugin.xml`: poner en `key` el nombre base
+  del `.properties`. La función se sigue invocando igual, porque su nombre sale del método Java,
+  no de esa `key`. Después, `verificar_todo.py` lo confirma.
+- Los `smart-service` y los `servlet` no están afectados: su plantilla ya usaba la misma clave en
+  los dos sitios, y los servlets no cargan bundle.
+- Un **manifiesto escrito o ampliado a mano** con varios `<function>` o `<smart-service>` necesita
+  un bundle por módulo, uno por cada `key`. Eso antes no lo comprobaba nadie, porque el contrato
+  describe un solo módulo.
+
+Cambios:
+
+- **`R-B07`, regla nueva** (capa 1C): un bundle `_en_US` por cada módulo declarado en
+  `appian-plugin.xml`, llamado como su `key`. Es la única regla de la capa que lee el manifiesto
+  en vez del contrato, y por eso ve lo que las demás no pueden: `R-B01` deriva su ruta del mismo
+  dato que produce el artefacto, así que sus dos lados coinciden aunque el manifiesto diga otra
+  cosa. Corre antes del `return` de `R-B01`, para que un proyecto al que le falten los dos
+  bundles se entere de una vez y no de uno cada vez.
+- **`R-J06` generalizada** (capa 4): la misma comprobación sobre el JAR ya construido, con la
+  lista de módulos leída del `appian-plugin.xml` **que viaja dentro del JAR** — el mismo fichero
+  que leerá Appian. Un manifiesto sin ningún módulo tampoco pasa: cero módulos era cero
+  comprobaciones.
+- **Plantilla de `function`**: `<function key="…">` toma el nombre base del bundle, como ya hacía
+  la de `smart-service`.
+- `referencias/entrevista.md` explica que la `key` de `<function>` nombra el **módulo** y no la
+  función, con el ejemplo de la documentación de Appian: un bundle `twitterFunctions_en_US.properties`
+  que sirve a dos funciones, `twittertrends` y `twittersearch`.
+
 ## 2026-09-21 · versión 0.2.1 — documentación para quien instala el plugin
 
 Ningún cambio de comportamiento: los scripts, las plantillas y las reglas son los de 0.2.0.

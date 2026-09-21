@@ -1,7 +1,7 @@
 # Sin esto, el core.autocrlf=true de Windows convertiria estos ficheros a
 # CRLF en el proximo checkout y rompería gradlew (script de shell, exige LF)
-# en cualquier consumidor Unix de un plugin generado. Mismo patron que ya usa
-# el proyecto de referencia (Plugin Read EML) para su propio wrapper.
+# en cualquier consumidor Unix de un plugin generado. Es el patron habitual
+# para versionar el wrapper de Gradle en un repositorio con checkouts mixtos.
 gradlew text eol=lf
 *.bat text eol=crlf
 *.jar -text

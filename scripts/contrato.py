@@ -11,6 +11,7 @@ import dataclasses
 import pathlib
 import re
 import tomllib
+import xml.etree.ElementTree as ET
 
 TIPOS_VALIDOS = {"function", "writer-function", "smart-service", "servlet"}
 REQUIRED_VALIDOS = {"ALWAYS", "OPTIONAL"}
@@ -495,6 +496,49 @@ def clave_de_funcion(funcion: str) -> str:
 
 def clave_de_parametro(funcion: str, parametro: str) -> str:
     return f"function.{funcion}.param.{parametro}.description"
+
+
+# EL OTRO CONVENIO QUE COMPARTEN EMISOR Y JUEZ: donde vive el bundle de un
+# MODULO, y como se llama.
+#
+# Appian resuelve el bundle de cada modulo como `<key del plug-in>.<key del
+# modulo>`, asi que el fichero se llama como la key del MODULO --no como el
+# plug-in, ni como la funcion-- y vive en la carpeta que sale de cambiar los
+# puntos de la key del plug-in por separadores. Sin el `_en_US`, el plug-in
+# NO DESPLIEGA, y el mensaje del servidor nombra el modulo culpable:
+#
+#   The Plug-in <key> Module <key del modulo> is missing the following
+#   internationalization bundle(s) for Locale en_US: [<key>.<key del modulo>]
+#   (APNX-1-4200-000)
+#
+# Que son DOS cosas ligadas y no una sola ya estaba escrito arriba, en
+# TIPOS_CON_BUNDLE --«bundle.nombre alimenta DOS cosas a la vez: la key del
+# modulo en el manifiesto y el nombre base del .properties»--; lo que faltaba
+# era que alguien lo comprobara sobre el manifiesto de verdad. Un manifiesto
+# con varios modulos necesita un bundle por modulo, y eso el contrato no puede
+# decirlo: solo el XML sabe cuantos modulos hay.
+ETIQUETAS_DE_MODULO_CON_BUNDLE = ("function", "smart-service")
+
+
+def modulos_con_bundle(xml_manifiesto: str) -> list[tuple[str, str]]:
+    """`[(etiqueta, key)]` de los modulos del manifiesto que cargan bundle.
+
+    Solo mira los hijos DIRECTOS de `<appian-plugin>`: `<class>` dentro de un
+    `<datatype>` no es un modulo, y un `<function>` anidado en cualquier otro
+    sitio no existe en el esquema. Un modulo sin `key` sale con cadena vacia y
+    lo juzga quien llame, no este constructor.
+    """
+    raiz = ET.fromstring(xml_manifiesto)
+    return [
+        (hijo.tag, hijo.get("key", ""))
+        for hijo in raiz
+        if hijo.tag in ETIQUETAS_DE_MODULO_CON_BUNDLE
+    ]
+
+
+def ruta_de_bundle(key_plugin: str, key_modulo: str, locale: str) -> str:
+    """`com.x.y` + `miModulo` + `en_US` -> `com/x/y/miModulo_en_US.properties`."""
+    return f"{key_plugin.replace('.', '/')}/{key_modulo}_{locale}.properties"
 
 
 def _lineas_de_etiqueta(claves: tuple[str, str], nombre: str, descripcion: str) -> str:

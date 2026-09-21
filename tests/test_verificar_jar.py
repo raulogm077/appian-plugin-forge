@@ -9,8 +9,14 @@ CONTRATO = {
     "bundle": {"nombre": "ejemplo"},
 }
 
+MANIFIESTO = (
+    '<appian-plugin key="com.raul.appian.ejemplo">'
+    '<smart-service key="ejemplo" class="com.raul.appian.ejemplo.Ejemplo"/>'
+    "</appian-plugin>"
+)
+
 BASE = {
-    "appian-plugin.xml": "<appian-plugin/>",
+    "appian-plugin.xml": MANIFIESTO,
     "com/raul/appian/ejemplo/ejemplo_en_US.properties": "name=Ejemplo",
     "src/com/raul/appian/ejemplo/Ejemplo.java": "package com.raul.appian.ejemplo;",
     "META-INF/LICENSE": "MIT",
@@ -77,6 +83,53 @@ def test_dependencia_declarada_y_presente_no_es_error(tmp_path):
 def test_falta_el_bundle_en_el_jar_es_error(tmp_path):
     entradas = {k: v for k, v in BASE.items() if not k.endswith(".properties")}
     assert "R-J06" in reglas(vj.comprobar(construir_jar(tmp_path, entradas), CONTRATO, []))
+
+
+def test_un_modulo_sin_su_bundle_es_error_aunque_el_del_contrato_este(tmp_path):
+    """El caso que se llevo por delante el despliegue de un plug-in real: el
+    manifiesto declara VARIOS modulos y el JAR trae un solo bundle, el que
+    deriva del contrato. R-B01 y la R-J06 anterior sacaban su unica ruta de
+    `bundle.nombre`, asi que los dos lados coincidian y las cuatro capas daban
+    verde; Appian se negaba a cargarlo con APNX-1-4200-000.
+    """
+    entradas = dict(BASE)
+    entradas["appian-plugin.xml"] = (
+        '<appian-plugin key="com.raul.appian.ejemplo">'
+        '<smart-service key="ejemplo" class="com.raul.appian.ejemplo.Ejemplo"/>'
+        '<smart-service key="segundo" class="com.raul.appian.ejemplo.Segundo"/>'
+        "</appian-plugin>"
+    )
+    hallazgos = vj.comprobar(construir_jar(tmp_path, entradas), CONTRATO, [])
+    assert "R-J06" in reglas(hallazgos)
+    mensaje = " ".join(h.mensaje for h in hallazgos if h.regla == "R-J06")
+    assert "segundo_en_US.properties" in mensaje
+    # Y el que SI esta no se reporta: la regla nombra al modulo culpable.
+    assert "ejemplo_en_US.properties" not in mensaje
+
+
+def test_el_bundle_se_busca_por_la_key_del_modulo_no_por_la_del_contrato(tmp_path):
+    """`bundle.nombre` dice `ejemplo` y el manifiesto declara `otraKey`: el
+    fichero que Appian busca es el del MODULO. Con la regla anterior, que solo
+    miraba `ejemplo_en_US.properties`, este JAR pasaba."""
+    entradas = dict(BASE)
+    entradas["appian-plugin.xml"] = (
+        '<appian-plugin key="com.raul.appian.ejemplo">'
+        '<smart-service key="otraKey" class="com.raul.appian.ejemplo.Ejemplo"/>'
+        "</appian-plugin>"
+    )
+    hallazgos = vj.comprobar(construir_jar(tmp_path, entradas), CONTRATO, [])
+    assert "R-J06" in reglas(hallazgos)
+    assert any("otraKey_en_US.properties" in h.mensaje for h in hallazgos)
+
+
+def test_un_manifiesto_sin_modulos_no_pasa_por_no_tener_nada_que_comprobar(tmp_path):
+    """Cero modulos es cero comprobaciones. Sin guarda, la regla se daria la
+    razon a si misma sobre un manifiesto que no declara nada."""
+    entradas = dict(BASE)
+    entradas["appian-plugin.xml"] = '<appian-plugin key="com.raul.appian.ejemplo"/>'
+    hallazgos = vj.comprobar(construir_jar(tmp_path, entradas), CONTRATO, [])
+    assert "R-J06" in reglas(hallazgos)
+    assert any("no declara ningun" in h.mensaje for h in hallazgos)
 
 
 def test_falta_license_o_notices_es_error(tmp_path):

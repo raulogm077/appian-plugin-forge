@@ -388,3 +388,97 @@ def test_writer_function_usa_el_mismo_convenio_que_function():
     sin_descripcion = BUNDLE_FN_OK.replace("function.invertircadena.description=Invierte una cadena\n", "")
     rutas_incompletas = {"com/raul/appian/texto/funcionesTexto_en_US.properties": sin_descripcion}
     assert "R-B03" in reglas(vb.comprobar(contrato_wf, rutas_incompletas))
+
+
+# ─── R-B07 · un bundle por modulo del MANIFIESTO ──────────────────────────
+#
+# La unica regla de la capa que no deriva del contrato. El contrato describe UN
+# modulo; el manifiesto puede declarar varios, y cada uno necesita el suyo
+# porque Appian lo busca como `<key del plug-in>.<key del modulo>`.
+
+MANIFIESTO_FN = (
+    '<appian-plugin key="com.raul.appian.texto">'
+    '<function key="funcionesTexto" class="com.raul.appian.texto.function.InvertirCadena"/>'
+    "</appian-plugin>"
+)
+
+
+def test_el_bundle_de_cada_modulo_declarado_esta_presente():
+    rutas = {"com/raul/appian/texto/funcionesTexto_en_US.properties": BUNDLE_FN_OK}
+    assert vb.comprobar(CONTRATO_FN, rutas, MANIFIESTO_FN) == []
+
+
+def test_un_segundo_modulo_sin_su_bundle_dispara_R_B07():
+    """El caso que no desplego en un Appian real: varios modulos, un bundle."""
+    manifiesto = (
+        '<appian-plugin key="com.raul.appian.texto">'
+        '<function key="funcionesTexto" class="com.raul.appian.texto.function.InvertirCadena"/>'
+        '<function key="otrasFunciones" class="com.raul.appian.texto.function.Otra"/>'
+        "</appian-plugin>"
+    )
+    rutas = {"com/raul/appian/texto/funcionesTexto_en_US.properties": BUNDLE_FN_OK}
+    hallazgos = vb.comprobar(CONTRATO_FN, rutas, manifiesto)
+    assert "R-B07" in reglas(hallazgos)
+    mensaje = " ".join(h.mensaje for h in hallazgos if h.regla == "R-B07")
+    assert "otrasFunciones_en_US.properties" in mensaje
+    assert "funcionesTexto_en_US.properties" not in mensaje
+
+
+def test_R_B07_dispara_cuando_la_key_del_modulo_no_es_el_nombre_del_bundle():
+    """El defecto que traia la plantilla de function: la key del modulo salia
+    del nombre de la funcion y el .properties de `bundle.nombre`. Cada cosa
+    estaba bien por separado y el plug-in no desplegaba."""
+    manifiesto = (
+        '<appian-plugin key="com.raul.appian.texto">'
+        '<function key="invertircadena" class="com.raul.appian.texto.function.InvertirCadena"/>'
+        "</appian-plugin>"
+    )
+    rutas = {"com/raul/appian/texto/funcionesTexto_en_US.properties": BUNDLE_FN_OK}
+    hallazgos = vb.comprobar(CONTRATO_FN, rutas, manifiesto)
+    assert "R-B07" in reglas(hallazgos)
+    assert any("invertircadena_en_US.properties" in h.mensaje for h in hallazgos)
+
+
+def test_R_B07_corre_aunque_falte_el_bundle_del_contrato():
+    """R-B01 corta con un `return` cuando no encuentra el bundle que deriva del
+    contrato. R-B07 va ANTES a proposito: si no, el proyecto al que le faltan
+    los dos se entera de uno cada vez."""
+    manifiesto = (
+        '<appian-plugin key="com.raul.appian.texto">'
+        '<function key="otrasFunciones" class="com.raul.appian.texto.function.Otra"/>'
+        "</appian-plugin>"
+    )
+    hallazgos = vb.comprobar(CONTRATO_FN, {}, manifiesto)
+    assert {"R-B01", "R-B07"} <= reglas(hallazgos)
+
+
+def test_sin_manifiesto_R_B07_lo_dice_en_vez_de_callar():
+    rutas = {"com/raul/appian/texto/funcionesTexto_en_US.properties": BUNDLE_FN_OK}
+    hallazgos = vb.comprobar(CONTRATO_FN, rutas, "")
+    assert "R-B07" in reglas(hallazgos)
+    assert any("no hay appian-plugin.xml" in h.mensaje for h in hallazgos)
+
+
+def test_un_modulo_sin_key_es_hallazgo():
+    manifiesto = (
+        '<appian-plugin key="com.raul.appian.texto">'
+        '<function class="com.raul.appian.texto.function.InvertirCadena"/>'
+        "</appian-plugin>"
+    )
+    rutas = {"com/raul/appian/texto/funcionesTexto_en_US.properties": BUNDLE_FN_OK}
+    hallazgos = vb.comprobar(CONTRATO_FN, rutas, manifiesto)
+    assert "R-B07" in reglas(hallazgos)
+    assert any("sin atributo key" in h.mensaje for h in hallazgos)
+
+
+def test_el_datatype_no_es_un_modulo_con_bundle():
+    """Sus <class> no son modulos; exigirles bundle seria un falso positivo en
+    todo plug-in que publique tipos propios."""
+    manifiesto = (
+        '<appian-plugin key="com.raul.appian.texto">'
+        '<datatype key="tipos" name="Tipos"><class>com.raul.appian.texto.T</class></datatype>'
+        '<function key="funcionesTexto" class="com.raul.appian.texto.function.InvertirCadena"/>'
+        "</appian-plugin>"
+    )
+    rutas = {"com/raul/appian/texto/funcionesTexto_en_US.properties": BUNDLE_FN_OK}
+    assert vb.comprobar(CONTRATO_FN, rutas, manifiesto) == []

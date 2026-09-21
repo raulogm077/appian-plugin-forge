@@ -19,6 +19,7 @@ traducido NO se muestra.
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
 
 import contrato
 from verificar_framework import Hallazgo
@@ -33,7 +34,10 @@ PREFIJOS_QUE_VIAJAN_ENTRE_LOCALES = ("error.", "validation.")
 
 
 def ruta_esperada(key: str, nombre_bundle: str, locale: str) -> str:
-    return f"{key.replace('.', '/')}/{nombre_bundle}_{locale}.properties"
+    # Delega en `contrato` a proposito: la MISMA cadena la construyen R-J06
+    # sobre el JAR y `andamiar` al escribir. Tres copias de esta expresion es
+    # justo como se coló la 1.0.0 de un plug-in real que no desplegaba.
+    return contrato.ruta_de_bundle(key, nombre_bundle, locale)
 
 
 def parsear_properties(texto: str) -> dict[str, str]:
@@ -96,7 +100,14 @@ def _con_sugerencia(clave: str, admitidas: set[str]) -> str:
     return f"{clave} (¿{correcta}?)" if correcta and correcta != clave else clave
 
 
-def comprobar(datos_contrato: dict, bundles: dict[str, str]) -> list[Hallazgo]:
+def comprobar(datos_contrato: dict, bundles: dict[str, str],
+              manifiesto: str | None = None) -> list[Hallazgo]:
+    """`manifiesto=None` sigue el convenio de `verificar_framework.comprobar`:
+    es «no me han dado el fichero» y salta R-B07, para que una llamada unitaria
+    que solo ejerce otra regla no tenga que fabricar un XML. Desde `main()`
+    llega SIEMPRE una cadena, aunque el fichero no exista --y entonces R-B07
+    dice que no ha podido mirar, que no es lo mismo que aprobar--.
+    """
     hallazgos: list[Hallazgo] = []
     plugin = datos_contrato["plugin"]
     tipo = plugin["tipo"]
@@ -165,6 +176,64 @@ def comprobar(datos_contrato: dict, bundles: dict[str, str]) -> list[Hallazgo]:
                 Hallazgo("R-B01", "error",
                          f"{ruta} no lleva sufijo de locale (<clave>_<locale>.properties)")
             )
+
+    # R-B07 · UN BUNDLE `_en_US` POR MODULO DEL MANIFIESTO, llamado como su key.
+    #
+    # Es la unica regla de esta capa que lee el MANIFIESTO y no el contrato, y
+    # por eso ve lo que ninguna otra puede ver. Appian resuelve el bundle de
+    # cada modulo como `<key del plug-in>.<key del modulo>`; con dos modulos
+    # hacen falta dos bundles, y el contrato --que describe UNO-- no tiene como
+    # saberlo. R-B01 deriva su ruta de `bundle.nombre`, asi que los dos lados de
+    # esa comprobacion salen del mismo dato y coinciden aunque el manifiesto
+    # diga otra cosa: el hueco exacto por el que un plug-in certificado
+    # READY_FOR_APPIAN_SUBMISSION murio al desplegar con
+    #   «Module <k> is missing the following internationalization bundle(s)
+    #    for Locale en_US: [<key>.<k>] (APNX-1-4200-000)».
+    #
+    # VA AQUI ARRIBA, con R-B05 y la primera mitad de R-B01, y por el mismo
+    # motivo: solo mira el CONJUNTO DE RUTAS. Por debajo del `return` de R-B01
+    # --que corta cuando falta el bundle del contrato-- no se enteraria de los
+    # modulos que ademas se han quedado sin el suyo, que es precisamente el
+    # caso que mas cuesta ver.
+    if manifiesto is not None:
+        modulos: list[tuple[str, str]] = []
+        if not manifiesto.strip():
+            # Fichero ausente o vacio. Se dice UNA vez y con el motivo real:
+            # parsear la cadena vacia daria ademas un ParseError que se lee
+            # como «XML corrupto» y manda a arreglar lo que no esta roto.
+            hallazgos.append(
+                Hallazgo("R-B07", "error",
+                         "no hay appian-plugin.xml junto a los recursos; sin manifiesto no se "
+                         "sabe que modulos declara el plug-in ni cuantos bundles hacen falta")
+            )
+        else:
+            try:
+                modulos = contrato.modulos_con_bundle(manifiesto)
+            except ET.ParseError as error:
+                hallazgos.append(
+                    Hallazgo("R-B07", "error",
+                             f"no se puede leer appian-plugin.xml para saber que modulos "
+                             f"declara ({error})")
+                )
+        for etiqueta, key_modulo in modulos:
+            if not key_modulo:
+                hallazgos.append(
+                    Hallazgo("R-B07", "error",
+                             f"el manifiesto declara un <{etiqueta}> sin atributo key; Appian "
+                             f"busca su bundle por esa key")
+                )
+                continue
+            ruta_modulo = contrato.ruta_de_bundle(
+                plugin["key"], key_modulo, LOCALE_POR_DEFECTO)
+            if ruta_modulo not in bundles:
+                hallazgos.append(
+                    Hallazgo("R-B07", "error",
+                             f"el modulo <{etiqueta} key=\"{key_modulo}\"> no tiene su bundle "
+                             f"{ruta_modulo}; Appian lo busca como "
+                             f"«{plugin['key']}.{key_modulo}» y sin el NO DESPLIEGA "
+                             f"(APNX-1-4200-000). El bundle se llama como la key del MODULO, "
+                             f"no como la funcion ni como el plug-in")
+                )
 
     # R-B01, segunda mitad · el bundle _en_US es OBLIGATORIO y va en la ruta que sale de la key.
     if ruta_en_us not in bundles:
@@ -279,6 +348,10 @@ def main() -> int:
         str(p.relative_to(raiz)).replace("\\", "/"): contrato.leer_utf8(p)
         for p in raiz.rglob("*.properties")
     }
+    # Siempre una cadena, exista o no el fichero: «no he podido mirar» es un
+    # hallazgo de R-B07, no un silencio.
+    ruta_manifiesto = raiz / "appian-plugin.xml"
+    manifiesto = contrato.leer_utf8(ruta_manifiesto) if ruta_manifiesto.is_file() else ""
     if datos["plugin"]["tipo"] == "servlet":
         # Su name/description van como atributos del manifiesto, no en un
         # .properties (nota de alcance de la capa 1C). Decirlo es mas honesto
@@ -286,9 +359,16 @@ def main() -> int:
         print(contrato.linea_no_aplica(
             "plugin.tipo", "servlet", "los servlets no cargan bundle de recursos"
         ))
-    hallazgos = comprobar(datos, bundles)
+    hallazgos = comprobar(datos, bundles, manifiesto)
+    modulos_declarados = 0
+    if manifiesto.strip():
+        try:
+            modulos_declarados = len(contrato.modulos_con_bundle(manifiesto))
+        except ET.ParseError:
+            modulos_declarados = 0
     print(contrato.linea_de_insumo(
         bundles=len(bundles), claves_esperadas=len(claves_esperadas(datos)),
+        modulos_declarados=modulos_declarados,
         # La portante es `claves_esperadas`, no `bundles`: cero claves es el
         # validador comparando ficheros REALES contra cero expectativas y
         # dandose la razon a si mismo. Cero bundles, en cambio, ya lo

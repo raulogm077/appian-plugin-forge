@@ -7,5 +7,10 @@
     <application-version min="{{APPLICATION_VERSION_MIN}}"/>
   </plugin-info>
 
-  <function key="{{FUNCION}}" class="{{PAQUETE}}.function.{{CLASE}}"/>
+  <!-- La key nombra el MODULO, no la funcion. Appian busca su bundle como
+       <key del plug-in>.<key del modulo>, asi que tiene que ser el nombre base
+       del .properties o el plug-in no despliega (APNX-1-4200-000). La funcion se
+       invoca en SAIL por el nombre de su metodo Java en minusculas, que es
+       tambien lo que llevan las claves function.<nombre>.* del bundle. -->
+  <function key="{{BUNDLE}}" class="{{PAQUETE}}.function.{{CLASE}}"/>
 </appian-plugin>

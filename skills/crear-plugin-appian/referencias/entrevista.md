@@ -102,24 +102,39 @@ un espacio o una palabra reservada se rechazan en el acto y no dentro de `./grad
 
 El que más cara cuesta olvidar, porque no es una decisión de diseño sino un identificador:
 
-**`[bundle] nombre`** — la clave del módulo. Alimenta **siempre** el nombre base del
-`.properties`, y en **`smart-service`** además el atributo `key` de `<smart-service>` en el
-manifiesto. El plug-in publicado en el AppMarket declara `key="readEmailFile"` y su bundle es
+**`[bundle] nombre`** — la clave del módulo. Alimenta **dos cosas que tienen que coincidir**: el
+atributo `key` del módulo en el manifiesto (`<function>`, `<smart-service>`) y el nombre base del
+`.properties`. Y tienen que coincidir porque **Appian resuelve el bundle de cada módulo como
+`<key del plug-in>.<key del módulo>`**; si no lo encuentra, el plug-in no despliega y el servidor
+nombra al módulo culpable:
+
+```
+The Plug-in <key> Module <key del módulo> is missing the following internationalization
+bundle(s) for Locale en_US: [<key>.<key del módulo>] (APNX-1-4200-000)
+```
+
+El plug-in publicado en el AppMarket declara `key="readEmailFile"` y su bundle es
 `readEmailFile_en_US.properties`: mismo nombre, y por eso es un solo campo. Se pide a los tres
 tipos que cargan bundle —`function`, `writer-function`, `smart-service`—; el `servlet` no lo
 lleva, su clave de módulo sale del nombre del artefacto.
 
-⚠️ **En `function` y `writer-function` esa segunda mitad no se cumple, y conviene saberlo antes
-de extrañarse:** el `key` de `<function>` sale de `[funcion] nombre` —y si esa sección no está,
-del nombre de la clase en minúsculas (`contrato.nombre_funcion`)—, no del bundle. Así que el
-fichero puede acabar llamándose `registrarAuditoria_en_US.properties` mientras la función se
-invoca como `registrarauditoriafunction(...)`. Ninguna capa lo marca porque ninguna de las dos
-cosas está mal por separado; si se quieren iguales, se declara `[funcion] nombre` con el mismo
-valor.
+**La `key` de `<function>` nombra el MÓDULO, no la función.** La función se invoca en SAIL por el
+nombre de su método Java en minúsculas, que es también el que llevan las claves
+`function.<nombre>.description` dentro del bundle. Por eso el ejemplo oficial de la documentación
+tiene un solo bundle, `twitterFunctions_en_US.properties`, con las claves de **dos** funciones:
+`function.twittertrends.description` y `function.twittersearch.description`. Un módulo, dos
+funciones, un bundle que se llama como el módulo.
 
-Por qué bloquea la puerta: sin él saldría `key=""` y un fichero llamado `_en_US.properties`, y
-ninguna de las cuatro capas lo vería, porque el validador de bundles deriva la ruta esperada del
-**mismo dato** que produce el artefacto, así que los dos lados coincidirían en la nada.
+De ahí la consecuencia que importa al escribir un manifiesto a mano: **un módulo `<function>` de
+más es un bundle de más**. Cinco funciones declaradas como cinco `<function key="…">` necesitan
+cinco `.properties` por locale, uno por key, aunque las claves de dentro sigan el nombre del
+método. `R-B07` lo comprueba leyendo el manifiesto —no el contrato, que solo describe un módulo—
+y `R-J06` repite la comprobación sobre el JAR ya construido.
+
+Por qué `[bundle] nombre` bloquea la puerta: sin él saldría `key=""` y un fichero llamado
+`_en_US.properties`, y `R-B01` no lo vería, porque deriva la ruta esperada del **mismo dato** que
+produce el artefacto, así que los dos lados coincidirían en la nada. `R-B07` sí lo ve: su lista de
+módulos sale del manifiesto.
 
 ### Qué llevan de más los contratos canónicos
 
