@@ -105,3 +105,12 @@ sesión que traiga `Out-File:Encoding` fijado a `utf8` —Claude Code lo hace—
 UTF-16 sin BOM), y lo que escribe `cmd` —ASCII puro en la práctica— entra por su rama UTF-8, con
 la de cp1252 detrás para los bytes que UTF-8 no admita. Si al medirlo sale UTF-8, mírese
 `$PSDefaultParameterValues` antes de concluir que la otra rama sobra.
+
+⚠️ **El BOM que el lector del log sí tolera, SpotBugs no.** Si reescribes
+`config/spotbugs/exclude.xml` desde PowerShell, el BOM que `Out-File` mete delante de `<?xml`
+hace que SpotBugs **descarte el filtro entero** —*«Unable to read filter … Content is not allowed
+in prolog»*— y **siga con `BUILD SUCCESSFUL`**. Tus exclusiones dejan de aplicarse y el build no
+lo dice: ves hallazgos que creías excluidos. **No es que SpotBugs esté roto**, y la salida no es
+saltarse la puerta con `-x spotbugsMain`: es reescribir el fichero sin BOM. `R-F14` lo detecta y
+lo nombra, porque el síntoma lleva al diagnóstico contrario — pasó en una prueba E2E real del
+21-sep-2026.

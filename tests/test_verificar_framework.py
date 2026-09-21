@@ -444,3 +444,40 @@ def test_un_segundo_bloque_que_pisa_al_primero_tampoco_pasa():
     hallazgos = vf.comprobar_guardarrailes("smart-service", gradle, "", "")
     assert [h.regla for h in hallazgos] == ["R-F14"]
     assert "true" in hallazgos[0].mensaje
+
+
+def test_un_BOM_en_exclude_xml_se_dice_porque_SpotBugs_no_puede_leerlo():
+    """El defecto vive en la DIVERGENCIA: Python tolera el BOM y SpotBugs no.
+
+    Medido el 21-sep-2026 con Gradle sobre un proyecto real: SpotBugs dice
+    «Unable to read filter ... Content is not allowed in prolog» y el build
+    termina en BUILD SUCCESSFUL. El sentido del fallo es seguro --sin filtro no
+    se excluye nada-- pero el sintoma no lo es: quien lo sufre ve hallazgos que
+    creia excluidos y concluye que la herramienta esta rota. Paso de verdad: en
+    una prueba E2E el ejecutor acabo lanzando `./gradlew build -x spotbugsMain`,
+    o sea saltandose la puerta entera para rodear un BOM.
+
+    En Windows sale solo: `Out-File` escribe UTF-8 CON BOM por defecto.
+    """
+    con_bom = "\ufeff" + EXCLUDE_CON_SECSP_ACTIVO
+    decidido = "# Decisiones\n\nD2: se excluye SECSP, valor firmado con HMAC.\n"
+
+    hallazgos = vf.comprobar_guardarrailes("servlet", GRADLE_SANO, con_bom, decidido)
+
+    assert [h.regla for h in hallazgos] == ["R-F14"], (
+        "un exclude.xml con BOM pasa en silencio: el validador lo lee y SpotBugs no"
+    )
+    assert "BOM" in hallazgos[0].mensaje
+    assert "SIN BOM" in hallazgos[0].mensaje, "el mensaje tiene que decir como salir"
+
+
+def test_el_BOM_no_impide_seguir_analizando_el_resto_del_fichero():
+    """Suelo antivacuidad: el BOM se reporta Y se quita, para que las demas
+    comprobaciones del fichero sigan corriendo. Si el hallazgo del BOM
+    sustituyera al analisis, una exclusion sin firmar se escaparia detras de el.
+    """
+    con_bom = "\ufeff" + EXCLUDE_CON_SECSP_ACTIVO
+
+    reglas = [h.regla for h in vf.comprobar_guardarrailes("servlet", GRADLE_SANO, con_bom, "")]
+
+    assert len(reglas) == 2, f"esperaba BOM + exclusion sin firmar, salieron {reglas}"

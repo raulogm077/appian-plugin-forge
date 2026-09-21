@@ -79,6 +79,11 @@ AJUSTES_SPOTBUGS = (
 # escriba `ejecutar()`.
 PATRONES_ABIERTOS_EN_SERVLET = frozenset({"SERVLET_PARAMETER", "SECSP"})
 
+# Escapado a proposito: el caracter literal es invisible al leer el fuente y
+# ademas `test_encoding_de_salida` prohibe en estos scripts cualquier cosa
+# fuera de cp1252, porque su salida va a una consola de Windows.
+BOM = "\ufeff"
+
 
 def _version_tupla(texto: str) -> tuple[int, ...]:
     return tuple(int(p) for p in re.findall(r"\d+", texto)[:2]) or (0,)
@@ -143,6 +148,30 @@ def comprobar_guardarrailes(tipo: str, gradle: str, exclusiones: str,
     # `tipo != "servlet"` de arriba, no deja pasar nada.
     if not exclusiones.strip():
         return hallazgos
+    # Un BOM delante de `<?xml` hace que SpotBugs NO pueda leer el filtro, y
+    # Python SI. Esa divergencia es el defecto: nuestro parser da el fichero por
+    # bueno y SpotBugs lo descarta, asi que las exclusiones escritas no se
+    # aplican y nadie lo dice.
+    #
+    # Medido el 21-sep-2026 con Gradle: «Unable to read filter: ... Content is
+    # not allowed in prolog» y BUILD SUCCESSFUL. El sentido del fallo es seguro
+    # --sin filtro no se excluye nada, o sea mas estricto-- pero el SINTOMA no:
+    # quien lo sufre ve hallazgos que creia excluidos, concluye que la
+    # herramienta esta rota y se salta la puerta. Paso de verdad en una prueba
+    # E2E: el ejecutor acabo lanzando `./gradlew build -x spotbugsMain`.
+    #
+    # En Windows sale solo: `Out-File` escribe UTF-8 CON BOM por defecto.
+    if exclusiones.startswith(BOM):
+        hallazgos.append(
+            Hallazgo("R-F14", "error",
+                     "config/spotbugs/exclude.xml empieza con un BOM, y SpotBugs no puede leerlo: "
+                     "dice «Unable to read filter ... Content is not allowed in prolog» y sigue con "
+                     "BUILD SUCCESSFUL, asi que tus exclusiones NO se aplican y el build no lo "
+                     "delata. No es que SpotBugs este roto: reescribe el fichero en UTF-8 SIN BOM "
+                     "(en PowerShell, `Out-File` lo pone por defecto)")
+        )
+        exclusiones = exclusiones.lstrip(BOM)
+
     try:
         # Los `<Match>` COMENTADOS no sobreviven al parseo, que es justo lo que
         # hace falta: el andamiaje deja el de SECSP dentro de un comentario.
