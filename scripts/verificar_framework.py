@@ -360,14 +360,12 @@ def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list, *,
     # y asi lo declara el plug-in aprobado del AppMarket.
     if tipo == "smart-service":
         for s in salidas:
-            if contrato.colision_con_horneada(s):
-                esperado = contrato.SALIDAS_HORNEADAS[s["nombre"]]
+            motivo = contrato.colision_con_horneada(s)
+            if motivo:
                 hallazgos.append(
                     Hallazgo("R-F03", "error",
                              f"la salida «{s['nombre']}» choca con el miembro que la plantilla "
-                             f"ya declara, que es de tipo {esperado} y no {s.get('tipo_java')}: "
-                             f"el .java saldria con el getter duplicado. Usar {esperado}, o "
-                             f"renombrar la salida")
+                             f"ya declara: {motivo}")
                 )
 
     # R-F04 · tipos no soportados para inferencia.
@@ -408,6 +406,25 @@ def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list, *,
                     )
                 vistos.add(m.nombre)
 
+    # R-F20 · `jakarta.xml.bind` no lo soporta Appian, y el fallo llega tarde.
+    # Cita de *Custom Data Types from Java Object*: «Plug-ins must use
+    # `javax.xml.bind.annotation` to annotate classes for a custom data type;
+    # `jakarta.xml.bind.annotation` is not supported.»
+    #
+    # Compila igual, porque es una libreria valida: el mismo paquete renombrado.
+    # Solo falla al desplegar, cuando Appian no encuentra las anotaciones que
+    # espera y el tipo no se registra.
+    tipos_de_las_clases: set[str] = set()
+    for c in clases:
+        tipos_de_las_clases |= c.tipos_referenciados
+    culpables = sorted(t for t in tipos_de_las_clases if t.startswith("jakarta.xml.bind"))
+    if culpables:
+        hallazgos.append(
+            Hallazgo("R-F20", "error",
+                     f"se usa {culpables[0]}: Appian no soporta `jakarta.xml.bind`, solo "
+                     f"`javax.xml.bind`. Compila igual y falla al desplegar el tipo")
+        )
+
     # R-F07 · new InitialContext() siempre falla contra fuentes del Admin Console.
     if any("InitialContext" in s for s in cadenas):
         hallazgos.append(
@@ -416,9 +433,65 @@ def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list, *,
                      "javax.naming.Context se inyecta por constructor (auditoria §2.8)")
         )
 
+    # R-F18 · en un smart service, los nombres de inputs y outputs son UNICOS
+    # entre si. Cita de *Smart Service Plug-ins > Internationalization*:
+    # «Input and output names must be unique, or deployment fails.»
+    #
+    # Se compara por el nombre que VE APPIAN, que es el del accesor
+    # (`contrato.identificador_java`, el mismo fundamento de R-B06), no el del
+    # campo: `documentoOrigen` y `DocumentoOrigen` son el MISMO input para
+    # Appian y dos campos distintos para javac, asi que el build pasa y el
+    # despliegue no. Y el conjunto incluye las dos salidas que la plantilla
+    # hornea siempre: declarar una salida `errorMessage` en el contrato choca
+    # con la `ErrorMessage` generada, y nada lo decia.
+    if tipo == "smart-service":
+        vistos: dict[str, str] = {}
+        candidatos = (
+            [("entrada", e.get("nombre", "")) for e in entradas]
+            + [("salida", s.get("nombre", "")) for s in salidas]
+            # Las horneadas entran para que una salida del contrato que choque
+            # con ellas se vea, pero la que ya nombra a una horneada la juzga
+            # R-F03, con su propio mensaje: aqui se salta para no decir dos
+            # veces lo mismo con palabras distintas.
+            + [("salida horneada", n) for n in sorted(contrato.SALIDAS_HORNEADAS)]
+        )
+        for clase_de_campo, nombre in candidatos:
+            if not nombre:
+                continue
+            if clase_de_campo == "salida" and contrato.horneada_equivalente(nombre):
+                continue   # lo dice R-F03
+            visto_como = contrato.identificador_java(nombre).lower()
+            if visto_como in vistos:
+                hallazgos.append(
+                    Hallazgo("R-F18", "error",
+                             f"«{nombre}» ({clase_de_campo}) y «{vistos[visto_como]}» son el "
+                             f"mismo nombre para Appian, que lee el del accesor: "
+                             f"«Input and output names must be unique, or deployment fails»")
+                )
+            else:
+                vistos[visto_como] = nombre
+
     # R-F08 · LA REGLA CON PEOR CONSECUENCIA: cambiar inputs u outputs sin clave
     # nueva rompe procesos VIVOS en produccion (auditoria §7.4).
     anterior = datos_contrato.get("version_anterior") or {}
+    if not anterior.get("firma"):
+        # SE DICE QUE NO SE EJECUTO. Era la unica regla del sistema que el autor
+        # del contrato podia apagar sin dejar rastro --basta con no escribir la
+        # seccion-- y justamente la de peor consecuencia: cambiar inputs u
+        # outputs reutilizando la key rompe PROCESOS VIVOS. Un silencio aqui se
+        # lee igual que un verde, y no es lo mismo.
+        #
+        # Aviso y no error a proposito: en un plug-in que se estrena, no tener
+        # version anterior es lo correcto. Lo que no puede pasar es que no se
+        # sepa cual de los dos casos es.
+        hallazgos.append(
+            Hallazgo("R-F08", "aviso",
+                     "no se ha comprobado la compatibilidad con una version ya desplegada: "
+                     "el contrato no declara [version_anterior]. Si este plug-in estrena su "
+                     "key, es lo correcto; si reemplaza a uno que ya vive en un Appian, esta "
+                     "es la regla que impide romper procesos en marcha, y hay que declarar "
+                     "la firma anterior para que corra")
+        )
     if anterior.get("firma"):
         # La firma compara nombre Y TIPO, no solo el nombre: cambiar
         # `doc: Long` por `doc: String` es un cambio de input a todos los
@@ -461,6 +534,65 @@ def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list, *,
                          f"la key del manifiesto «{raiz.get('key')}» no coincide con la del "
                          f"contrato «{plugin.get('key')}»")
             )
+        # R-F16 · TODA clase que el manifiesto nombra tiene que existir.
+        #
+        # R-F12, justo debajo, mira lo contrario y solo una: que la clase DEL
+        # CONTRATO este declarada. Nadie miraba el otro sentido, y ahi caben dos
+        # fallos que solo aparecen al desplegar, porque `javac` no lee el XML:
+        # un nombre mal tecleado en `class=`, y un modulo anadido a mano cuya
+        # clase nunca se escribio. Appian carga cada una por su nombre al
+        # desplegar; la que no este da un fallo de carga del modulo.
+        #
+        # Los dos lados vienen de sitios distintos a proposito: el manifiesto y
+        # las clases COMPILADAS. El contrato no interviene, asi que la regla
+        # sigue viendo lo que se edite a mano en cualquiera de los dos.
+        compiladas = {c.nombre_clase for c in clases}
+        if compiladas:
+            for donde, declarada in contrato.clases_declaradas(xml_manifiesto):
+                if declarada not in compiladas:
+                    hallazgos.append(
+                        Hallazgo("R-F16", "error",
+                                 f"el manifiesto declara <{donde}> con la clase «{declarada}» "
+                                 f"y no hay ninguna clase compilada con ese nombre; Appian la "
+                                 f"carga por nombre al desplegar y no la encontraria. "
+                                 f"javac no lee el manifiesto: un nombre mal escrito aqui no "
+                                 f"rompe el build")
+                    )
+
+        # R-F17 · dos modulos con la misma key.
+        #
+        # Cada modulo es una entrada del registro de plug-ins y su key la
+        # identifica. Con dos iguales, una de las dos queda inalcanzable y no
+        # esta definido cual. Ademas comparten el mismo bundle, porque este se
+        # resuelve por esa key (R-B07).
+        for repetida in contrato.claves_de_modulo_repetidas(xml_manifiesto):
+            hallazgos.append(
+                Hallazgo("R-F17", "error",
+                         f"el manifiesto declara dos modulos con la key «{repetida}»; la key "
+                         f"identifica al modulo en el registro de plug-ins y las dos "
+                         f"compartirian tambien el bundle")
+            )
+
+        # R-F19 · cada `<datatype>` va declarado ANTES del modulo que lo usa.
+        # Cita de *Custom Data Types from Java Object*: «Within
+        # `appian-plugin.xml`, each `datatype` module must be declared before
+        # the smart service or function that uses it.»
+        #
+        # El forge no genera `<datatype>`, pero nada impide anadir uno a mano
+        # --es lo que hace falta para devolver un tipo estructurado-- y el
+        # orden en un XML es invisible para cualquier otra comprobacion.
+        orden = [hijo.tag for hijo in raiz]
+        if "datatype" in orden:
+            primer_consumidor = next(
+                (i for i, t in enumerate(orden) if t in ("function", "smart-service")), None)
+            ultimo_datatype = max(i for i, t in enumerate(orden) if t == "datatype")
+            if primer_consumidor is not None and ultimo_datatype > primer_consumidor:
+                hallazgos.append(
+                    Hallazgo("R-F19", "error",
+                             f"hay un <datatype> declarado DESPUES de un <{orden[primer_consumidor]}>; "
+                             f"cada datatype debe ir antes del modulo que lo usa")
+                )
+
         # R-F12 · coherencia cruzada contrato <-> manifiesto: la clase declarada.
         clase_esperada = datos_contrato.get("clase", {}).get("nombre")
         clases_xml = [el.get("class", "") for el in raiz.iter() if el.get("class")]

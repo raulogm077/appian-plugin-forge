@@ -3,6 +3,50 @@
 Por versión, la más reciente arriba. Lo que afecta a plug-ins ya generados va al principio de su
 entrada.
 
+## 2026-09-22 · versión 0.2.3 — lo que Appian resuelve al desplegar
+
+Una auditoría de la familia entera de fallo que destapó la 0.2.2: **todo lo que el cargador de
+plug-ins de Appian resuelve al desplegar y que ni el compilador ni el resto de las capas ven**.
+Son correspondencias entre el manifiesto, los ficheros de recursos, los nombres de los accesores y
+lo que ya vive en el entorno de destino. Ninguna la mira `javac`.
+
+Lo que afecta a plug-ins **ya generados**:
+
+- **Un contrato de smart service que declare la salida `errorOccurred` o `errorMessage` en
+  minúscula genera código que no compila.** La plantilla ya declara esos dos miembros y el emisor
+  solo los reconocía escritos con su caja exacta, así que salían por duplicado: *"variable
+  errorOccurred is already defined"*. Ahora `R-F03` lo rechaza en la puerta y dice el nombre
+  exacto que hay que escribir, `ErrorOccurred` y `ErrorMessage`.
+- **Todo plug-in sin `[version_anterior]` en su contrato gana un aviso.** No bloquea, y en un
+  plug-in que estrena su clave es lo correcto. Aparece porque `R-F08` —la regla que impide romper
+  procesos en marcha al reemplazar un plug-in ya desplegado— era la única que podía quedarse sin
+  ejecutar en silencio.
+- Las demás reglas nuevas son verdes sobre todo lo que estuviera bien construido.
+
+Reglas nuevas:
+
+| Regla | Qué mira | Por qué no se veía |
+|---|---|---|
+| `R-F16` / `R-J10` | Toda clase que nombra el manifiesto existe: compilada, y dentro del JAR | `R-F12` comprobaba el sentido contrario y solo por el nombre simple, así que un paquete equivocado o una clase inexistente pasaban |
+| `R-F17` | Dos módulos no comparten `key` | Nadie lo miraba |
+| `R-F18` | En smart services, los nombres de entradas y salidas son únicos para Appian, que los lee del accesor | *"Input and output names must be unique, or deployment fails"*; dos nombres que solo difieren en la caja son dos campos para `javac` y uno solo para Appian |
+| `R-F19` | Cada `<datatype>` va declarado antes del módulo que lo usa | El orden de un XML no lo ve ninguna otra comprobación |
+| `R-F20` | Nadie usa `jakarta.xml.bind` | Compila igual: es el mismo paquete renombrado |
+| `R-J11` | La `key` del manifiesto empaquetado es la del contrato | `R-F11` ata las dos, pero sobre el manifiesto de `src/`: entre ese fichero y el JAR hay una copia |
+
+Además:
+
+- **`R-B07` incluye ahora `<function-category>`**, que también es un módulo y también carga bundle:
+  *"The category key will also be the name of the internationalization bundle."*
+- **`R-B07` corre aunque el contrato diga `servlet`.** La capa de bundles se saltaba entera por el
+  tipo del contrato, y esta regla pregunta por lo que declara el manifiesto: un servlet cuyo XML
+  declarara además una función se llevaba la capa sin mirar nada.
+- **`R-J06` deriva la carpeta de los bundles de la `key` del manifiesto empaquetado**, que es la
+  que lee Appian, en vez de la del contrato.
+- Cada hallazgo de `R-B07` y `R-J06` **dice si su caso está observado o deducido**: el fallo de
+  despliegue está comprobado para `<function>`; para los otros módulos, la regla viene de la
+  documentación y lo declara.
+
 ## 2026-09-21 · versión 0.2.2 — el bundle se llama como la key de su módulo
 
 **Corrige un fallo que impedía desplegar todo plug-in de tipo `function` o `writer-function`

@@ -482,3 +482,77 @@ def test_el_datatype_no_es_un_modulo_con_bundle():
     )
     rutas = {"com/raul/appian/texto/funcionesTexto_en_US.properties": BUNDLE_FN_OK}
     assert vb.comprobar(CONTRATO_FN, rutas, manifiesto) == []
+
+
+def test_una_categoria_propia_sin_su_bundle_dispara_R_B07():
+    """`<function-category>` tambien es un modulo, y la documentacion le da la
+    misma regla: *"The category key will also be the name of the
+    internationalization bundle… It will only contain one key—the category key
+    itself."* Sin este test, quitar `function-category` de la lista de modulos
+    con bundle dejaba los 33 tests de este fichero en verde."""
+    manifiesto = (
+        '<appian-plugin key="com.raul.appian.texto">'
+        '<function-category key="MiCategoria" name="Mi Categoria"/>'
+        '<function key="funcionesTexto" class="com.raul.appian.texto.function.InvertirCadena"/>'
+        "</appian-plugin>"
+    )
+    rutas = {"com/raul/appian/texto/funcionesTexto_en_US.properties": BUNDLE_FN_OK}
+    hallazgos = vb.comprobar(CONTRATO_FN, rutas, manifiesto)
+    assert "R-B07" in reglas(hallazgos)
+    assert any("MiCategoria_en_US.properties" in h.mensaje for h in hallazgos)
+
+
+def test_una_categoria_con_su_bundle_no_da_hallazgos():
+    manifiesto = (
+        '<appian-plugin key="com.raul.appian.texto">'
+        '<function-category key="MiCategoria" name="Mi Categoria"/>'
+        '<function key="funcionesTexto" class="com.raul.appian.texto.function.InvertirCadena"/>'
+        "</appian-plugin>"
+    )
+    rutas = {
+        "com/raul/appian/texto/funcionesTexto_en_US.properties": BUNDLE_FN_OK,
+        "com/raul/appian/texto/MiCategoria_en_US.properties": "MiCategoria=Mi Categoria",
+    }
+    assert vb.comprobar(CONTRATO_FN, rutas, manifiesto) == []
+
+
+def test_el_hallazgo_dice_si_su_caso_esta_observado_o_deducido():
+    """Dar por igual de comprobado lo observado y lo deducido es como se colo la
+    afirmacion --escrita, razonada y falsa-- de que el nombre del bundle de una
+    funcion era libre. Un `<function>` sin bundle cita el fallo real; una
+    categoria dice que viene de la documentacion."""
+    base = '<appian-plugin key="com.raul.appian.texto">{}</appian-plugin>'
+    sin_nada = {}
+    de_funcion = vb.comprobar(
+        CONTRATO_FN, sin_nada,
+        base.format('<function key="funcionesTexto" class="com.raul.appian.texto.F"/>'))
+    de_categoria = vb.comprobar(
+        CONTRATO_FN, sin_nada,
+        base.format('<function-category key="MiCategoria" name="Mi Categoria"/>'))
+    texto_funcion = " ".join(h.mensaje for h in de_funcion if h.regla == "R-B07")
+    texto_categoria = " ".join(h.mensaje for h in de_categoria if h.regla == "R-B07")
+    assert "APNX-1-4200-000" in texto_funcion
+    assert "observado en un Appian real" in texto_funcion
+    assert "no para este elemento" in texto_categoria
+
+
+def test_R_B07_corre_aunque_el_contrato_diga_servlet():
+    """La capa 1C se salta entera en servlets, por el tipo del CONTRATO. Pero
+    R-B07 pregunta por lo que declara el MANIFIESTO: un contrato `servlet` cuyo
+    XML declare ademas una funcion se llevaba la capa sin mirar nada."""
+    contrato_servlet = {
+        "plugin": {"key": "com.raul.appian.srv", "tipo": "servlet", "nombre": "Srv"},
+        "clase": {"nombre": "MiServlet"}, "entradas": [], "salidas": [],
+    }
+    manifiesto = (
+        '<appian-plugin key="com.raul.appian.srv">'
+        '<servlet key="srv" class="com.raul.appian.srv.servlet.MiServlet"/>'
+        '<function key="extra" class="com.raul.appian.srv.function.Extra"/>'
+        "</appian-plugin>"
+    )
+    hallazgos = vb.comprobar(contrato_servlet, {}, manifiesto)
+    assert "R-B07" in reglas(hallazgos)
+    mensaje = " ".join(h.mensaje for h in hallazgos if h.regla == "R-B07")
+    assert "extra_en_US.properties" in mensaje
+    # Y el `<servlet>` sigue exento: su name/description van en el XML.
+    assert "srv_en_US" not in mensaje

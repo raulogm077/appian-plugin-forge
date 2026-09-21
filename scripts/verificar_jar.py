@@ -127,6 +127,26 @@ def comprobar(
     # el mismo fichero que leera Appian. Es la comprobacion mas fiel que se
     # puede hacer sin un servidor delante.
     if manifiesto_jar.strip():
+        # La carpeta sale de la key del manifiesto QUE VIAJA EN EL JAR, no de
+        # la del contrato: es la que lee Appian. Usar la del contrato hacia que
+        # un manifiesto empaquetado con otra key exigiera la ruta equivocada, y
+        # la regla habria dado por bueno un JAR que no despliega.
+        try:
+            key_empaquetada = ET.fromstring(manifiesto_jar).get("key", "")
+        except ET.ParseError:
+            key_empaquetada = ""
+        key_para_rutas = key_empaquetada or plugin["key"]
+
+        # R-J11 · y esa key tiene que ser la del contrato. R-F11 ata las dos,
+        # pero sobre el manifiesto de `src/`: entre ese fichero y el JAR hay un
+        # `processResources` y una copia.
+        if key_empaquetada and key_empaquetada != plugin["key"]:
+            hallazgos.append(
+                Hallazgo("R-J11", "error",
+                         f"la key del manifiesto empaquetado «{key_empaquetada}» no es la del "
+                         f"contrato «{plugin['key']}»; de ella salen la carpeta de los bundles "
+                         f"y la identidad del plug-in")
+            )
         try:
             modulos = contrato.modulos_con_bundle(manifiesto_jar)
         except ET.ParseError as error:
@@ -151,13 +171,13 @@ def comprobar(
                              f"el manifiesto del JAR declara un <{etiqueta}> sin key")
                 )
                 continue
-            ruta_bundle = contrato.ruta_de_bundle(plugin["key"], key_modulo, "en_US")
+            ruta_bundle = contrato.ruta_de_bundle(key_para_rutas, key_modulo, "en_US")
             if ruta_bundle not in entradas:
                 hallazgos.append(
                     Hallazgo("R-J06", "error",
                              f"falta {ruta_bundle} dentro del JAR: el modulo "
-                             f"<{etiqueta} key=\"{key_modulo}\"> se queda sin bundle y el "
-                             f"plug-in NO DESPLIEGA (APNX-1-4200-000)")
+                             f"<{etiqueta} key=\"{key_modulo}\"> se queda sin bundle. "
+                             f"{contrato.procedencia_de_modulo(etiqueta)}")
                 )
     elif plugin["tipo"] != "servlet":
         # Sin manifiesto no se sabe que modulos hay. R-J01 ya dice que falta;
@@ -168,6 +188,26 @@ def comprobar(
                      "sin appian-plugin.xml en el JAR no se puede comprobar que cada modulo "
                      "tenga su bundle _en_US")
         )
+
+    # R-J10 · TODA clase que el manifiesto del JAR nombra viaja en el JAR.
+    #
+    # Es R-F16 sobre el artefacto que se entrega, y no es la misma
+    # comprobacion: entre `build/classes` y el JAR hay un `jar {}` con filtros,
+    # y una clase puede compilar y no empaquetarse. Appian la carga por nombre
+    # al desplegar el modulo.
+    if manifiesto_jar.strip():
+        try:
+            declaradas = contrato.clases_declaradas(manifiesto_jar)
+        except ET.ParseError:
+            declaradas = []   # R-J06 ya reporto que el XML no se puede leer
+        for donde, clase in declaradas:
+            if clase.replace(".", "/") + ".class" not in entradas:
+                hallazgos.append(
+                    Hallazgo("R-J10", "error",
+                             f"el manifiesto declara <{donde}> con la clase «{clase}» y ese "
+                             f".class no esta dentro del JAR; el modulo no cargaria al "
+                             f"desplegar")
+                )
 
     # R-J07 · licencia y notices.
     for obligatorio in ("META-INF/LICENSE", "META-INF/THIRD_PARTY_NOTICES.md"):

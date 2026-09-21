@@ -204,3 +204,73 @@ def test_un_contrato_sin_dependencias_lo_declara_en_vez_de_callar(tmp_path, caps
     codigo = vj.main_con_argumentos([str(ruta), "no-usado"], datos_contrato=CONTRATO)
     assert codigo == 0
     assert "R-J05" in capsys.readouterr().out
+
+
+# ─── R-J10 · las clases del manifiesto viajan en el JAR ───────────────────
+
+
+def test_R_J10_clase_declarada_ausente_del_jar(tmp_path):
+    """Entre `build/classes` y el JAR hay un `jar {}` con filtros: una clase
+    puede compilar y no empaquetarse, y entonces el modulo no carga."""
+    entradas = dict(BASE)
+    entradas["appian-plugin.xml"] = (
+        '<appian-plugin key="com.raul.appian.ejemplo">'
+        '<smart-service key="ejemplo" class="com.raul.appian.ejemplo.NoEmpaquetada"/>'
+        "</appian-plugin>"
+    )
+    entradas["com/raul/appian/ejemplo/ejemplo_en_US.properties"] = "name=Ejemplo"
+    hallazgos = vj.comprobar(construir_jar(tmp_path, entradas), CONTRATO, [])
+    assert "R-J10" in reglas(hallazgos)
+    assert any("NoEmpaquetada" in h.mensaje for h in hallazgos if h.regla == "R-J10")
+
+
+def test_R_J10_verde_cuando_la_clase_viaja(tmp_path):
+    assert "R-J10" not in reglas(vj.comprobar(construir_jar(tmp_path, BASE), CONTRATO, []))
+
+
+def test_R_J10_tambien_mira_las_clases_de_un_datatype(tmp_path):
+    entradas = dict(BASE)
+    entradas["appian-plugin.xml"] = (
+        '<appian-plugin key="com.raul.appian.ejemplo">'
+        '<smart-service key="ejemplo" class="com.raul.appian.ejemplo.Ejemplo"/>'
+        '<datatype key="tipos" name="Tipos">'
+        "<class>com.raul.appian.ejemplo.TipoQueNoViaja</class></datatype>"
+        "</appian-plugin>"
+    )
+    hallazgos = vj.comprobar(construir_jar(tmp_path, entradas), CONTRATO, [])
+    assert "R-J10" in reglas(hallazgos)
+    assert any("TipoQueNoViaja" in h.mensaje for h in hallazgos if h.regla == "R-J10")
+
+
+def test_R_J06_usa_la_key_del_manifiesto_empaquetado_no_la_del_contrato(tmp_path):
+    """La carpeta de los bundles sale de la key que lee Appian, que es la del
+    XML que viaja en el JAR. Derivarla del contrato hacia exigir la ruta
+    equivocada y dar por bueno un JAR que no despliega."""
+    entradas = dict(BASE)
+    entradas["appian-plugin.xml"] = (
+        '<appian-plugin key="com.otra.key.distinta">'
+        '<smart-service key="ejemplo" class="com.raul.appian.ejemplo.Ejemplo"/>'
+        "</appian-plugin>"
+    )
+    hallazgos = vj.comprobar(construir_jar(tmp_path, entradas), CONTRATO, [])
+    # El bundle que hay esta bajo la ruta del contrato; Appian buscaria bajo la
+    # del manifiesto, que es otra.
+    assert any("com/otra/key/distinta/ejemplo_en_US.properties" in h.mensaje
+               for h in hallazgos if h.regla == "R-J06")
+
+
+def test_R_J11_la_key_del_manifiesto_empaquetado_tiene_que_ser_la_del_contrato(tmp_path):
+    """R-F11 ata las dos, pero sobre el manifiesto de `src/`: entre ese fichero
+    y el JAR hay un `processResources` y una copia."""
+    entradas = dict(BASE)
+    entradas["appian-plugin.xml"] = (
+        '<appian-plugin key="com.otra.key.distinta">'
+        '<smart-service key="ejemplo" class="com.raul.appian.ejemplo.Ejemplo"/>'
+        "</appian-plugin>"
+    )
+    hallazgos = vj.comprobar(construir_jar(tmp_path, entradas), CONTRATO, [])
+    assert "R-J11" in reglas(hallazgos)
+
+
+def test_R_J11_no_dispara_cuando_coinciden(tmp_path):
+    assert "R-J11" not in reglas(vj.comprobar(construir_jar(tmp_path, BASE), CONTRATO, []))

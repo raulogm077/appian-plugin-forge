@@ -100,6 +100,70 @@ def _con_sugerencia(clave: str, admitidas: set[str]) -> str:
     return f"{clave} (¿{correcta}?)" if correcta and correcta != clave else clave
 
 
+def _modulos_del_manifiesto(plugin: dict, bundles: dict[str, str],
+                            manifiesto: str | None) -> list[Hallazgo]:
+    """R-B07 · UN BUNDLE `_en_US` POR MODULO DEL MANIFIESTO, llamado como su key.
+
+    Es la unica regla de esta capa que lee el MANIFIESTO y no el contrato, y por
+    eso ve lo que ninguna otra puede ver. Appian resuelve el bundle de cada
+    modulo como `<key del plug-in>.<key del modulo>`; con dos modulos hacen falta
+    dos bundles, y el contrato --que describe UNO-- no tiene como saberlo. R-B01
+    deriva su ruta de `bundle.nombre`, asi que sus dos lados salen del mismo dato
+    y coinciden aunque el manifiesto diga otra cosa: el hueco exacto por el que un
+    plug-in certificado READY_FOR_APPIAN_SUBMISSION murio al desplegar con
+    «Module <k> is missing the following internationalization bundle(s) for Locale
+    en_US: [<key>.<k>] (APNX-1-4200-000)».
+
+    Vive en su propia funcion para que su POSICION no dependa de donde este
+    escrita: la llama `comprobar` antes de cualquier `return`, incluido el de la
+    exencion de los servlets. Los dos cortes de este fichero --el de servlet, por
+    el tipo del contrato, y el de R-B01, por el bundle que falta-- se han llevado
+    por delante a otras reglas cuatro veces ya.
+    """
+    hallazgos: list[Hallazgo] = []
+    if manifiesto is None:
+        return hallazgos
+    modulos: list[tuple[str, str]] = []
+    if not manifiesto.strip():
+        # Fichero ausente o vacio. Se dice UNA vez y con el motivo real: parsear
+        # la cadena vacia daria ademas un ParseError que se lee como «XML
+        # corrupto» y manda a arreglar lo que no esta roto.
+        hallazgos.append(
+            Hallazgo("R-B07", "error",
+                     "no hay appian-plugin.xml junto a los recursos; sin manifiesto no se "
+                     "sabe que modulos declara el plug-in ni cuantos bundles hacen falta")
+        )
+        return hallazgos
+    try:
+        modulos = contrato.modulos_con_bundle(manifiesto)
+    except ET.ParseError as error:
+        hallazgos.append(
+            Hallazgo("R-B07", "error",
+                     f"no se puede leer appian-plugin.xml para saber que modulos declara "
+                     f"({error})")
+        )
+        return hallazgos
+    for etiqueta, key_modulo in modulos:
+        if not key_modulo:
+            hallazgos.append(
+                Hallazgo("R-B07", "error",
+                         f"el manifiesto declara un <{etiqueta}> sin atributo key; Appian "
+                         f"busca su bundle por esa key")
+            )
+            continue
+        ruta_modulo = contrato.ruta_de_bundle(plugin["key"], key_modulo, LOCALE_POR_DEFECTO)
+        if ruta_modulo not in bundles:
+            hallazgos.append(
+                Hallazgo("R-B07", "error",
+                         f"el modulo <{etiqueta} key=\"{key_modulo}\"> no tiene su bundle "
+                         f"{ruta_modulo}; Appian lo busca como "
+                         f"«{plugin['key']}.{key_modulo}». El bundle se llama como la key "
+                         f"del MODULO, no como la funcion ni como el plug-in. "
+                         f"{contrato.procedencia_de_modulo(etiqueta)}")
+            )
+    return hallazgos
+
+
 def comprobar(datos_contrato: dict, bundles: dict[str, str],
               manifiesto: str | None = None) -> list[Hallazgo]:
     """`manifiesto=None` sigue el convenio de `verificar_framework.comprobar`:
@@ -113,8 +177,17 @@ def comprobar(datos_contrato: dict, bundles: dict[str, str],
     tipo = plugin["tipo"]
     nombre_bundle = datos_contrato.get("bundle", {}).get("nombre", "")
 
+    # OJO CON EL ORDEN: este `return` sale del TIPO DECLARADO EN EL CONTRATO, y
+    # R-B07 pregunta por los modulos que declara el MANIFIESTO. Un contrato
+    # `servlet` cuyo XML declare ademas un `<function>` o un `<function-category>`
+    # se llevaba la capa entera sin mirar nada. El tipo del contrato no manda
+    # sobre lo que el manifiesto dice.
+    hallazgos += _modulos_del_manifiesto(plugin, bundles, manifiesto)
+
     if tipo == "servlet":
-        return hallazgos  # los servlets no requieren bundle
+        # La exencion sigue valiendo para SU modulo: el name y la description de
+        # un servlet son atributos de `<servlet>`, no claves de un `.properties`.
+        return hallazgos
 
     ruta_en_us = ruta_esperada(plugin["key"], nombre_bundle, LOCALE_POR_DEFECTO)
 
@@ -176,64 +249,6 @@ def comprobar(datos_contrato: dict, bundles: dict[str, str],
                 Hallazgo("R-B01", "error",
                          f"{ruta} no lleva sufijo de locale (<clave>_<locale>.properties)")
             )
-
-    # R-B07 · UN BUNDLE `_en_US` POR MODULO DEL MANIFIESTO, llamado como su key.
-    #
-    # Es la unica regla de esta capa que lee el MANIFIESTO y no el contrato, y
-    # por eso ve lo que ninguna otra puede ver. Appian resuelve el bundle de
-    # cada modulo como `<key del plug-in>.<key del modulo>`; con dos modulos
-    # hacen falta dos bundles, y el contrato --que describe UNO-- no tiene como
-    # saberlo. R-B01 deriva su ruta de `bundle.nombre`, asi que los dos lados de
-    # esa comprobacion salen del mismo dato y coinciden aunque el manifiesto
-    # diga otra cosa: el hueco exacto por el que un plug-in certificado
-    # READY_FOR_APPIAN_SUBMISSION murio al desplegar con
-    #   «Module <k> is missing the following internationalization bundle(s)
-    #    for Locale en_US: [<key>.<k>] (APNX-1-4200-000)».
-    #
-    # VA AQUI ARRIBA, con R-B05 y la primera mitad de R-B01, y por el mismo
-    # motivo: solo mira el CONJUNTO DE RUTAS. Por debajo del `return` de R-B01
-    # --que corta cuando falta el bundle del contrato-- no se enteraria de los
-    # modulos que ademas se han quedado sin el suyo, que es precisamente el
-    # caso que mas cuesta ver.
-    if manifiesto is not None:
-        modulos: list[tuple[str, str]] = []
-        if not manifiesto.strip():
-            # Fichero ausente o vacio. Se dice UNA vez y con el motivo real:
-            # parsear la cadena vacia daria ademas un ParseError que se lee
-            # como «XML corrupto» y manda a arreglar lo que no esta roto.
-            hallazgos.append(
-                Hallazgo("R-B07", "error",
-                         "no hay appian-plugin.xml junto a los recursos; sin manifiesto no se "
-                         "sabe que modulos declara el plug-in ni cuantos bundles hacen falta")
-            )
-        else:
-            try:
-                modulos = contrato.modulos_con_bundle(manifiesto)
-            except ET.ParseError as error:
-                hallazgos.append(
-                    Hallazgo("R-B07", "error",
-                             f"no se puede leer appian-plugin.xml para saber que modulos "
-                             f"declara ({error})")
-                )
-        for etiqueta, key_modulo in modulos:
-            if not key_modulo:
-                hallazgos.append(
-                    Hallazgo("R-B07", "error",
-                             f"el manifiesto declara un <{etiqueta}> sin atributo key; Appian "
-                             f"busca su bundle por esa key")
-                )
-                continue
-            ruta_modulo = contrato.ruta_de_bundle(
-                plugin["key"], key_modulo, LOCALE_POR_DEFECTO)
-            if ruta_modulo not in bundles:
-                hallazgos.append(
-                    Hallazgo("R-B07", "error",
-                             f"el modulo <{etiqueta} key=\"{key_modulo}\"> no tiene su bundle "
-                             f"{ruta_modulo}; Appian lo busca como "
-                             f"«{plugin['key']}.{key_modulo}» y sin el NO DESPLIEGA "
-                             f"(APNX-1-4200-000). El bundle se llama como la key del MODULO, "
-                             f"no como la funcion ni como el plug-in")
-                )
 
     # R-B01, segunda mitad · el bundle _en_US es OBLIGATORIO y va en la ruta que sale de la key.
     if ruta_en_us not in bundles:

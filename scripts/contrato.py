@@ -517,7 +517,26 @@ def clave_de_parametro(funcion: str, parametro: str) -> str:
 # era que alguien lo comprobara sobre el manifiesto de verdad. Un manifiesto
 # con varios modulos necesita un bundle por modulo, y eso el contrato no puede
 # decirlo: solo el XML sabe cuantos modulos hay.
-ETIQUETAS_DE_MODULO_CON_BUNDLE = ("function", "smart-service")
+# `function-category` esta aqui porque la documentacion le aplica la MISMA regla
+# que a los demas modulos, con el mismo ejemplo: *"The category key will also be
+# the name of the internationalization bundle… if the plugin-key is `com.example`
+# and the category name is `ExampleCategory`, the name of the file … will be
+# `ExampleCategory_en_US.properties` and will be located in the `/com/example`
+# folder. It will only contain one key—the category key itself."* Y la misma
+# pagina lo llama modulo al hablar del orden de despliegue: *"the category module
+# definition"*.
+#
+# `datatype` NO esta, y no por olvido: es el unico elemento del que consta que
+# carga SIN bundle propio --un plug-in con `<datatype>` y sin
+# `<key>_en_US.properties` para el desplego sus modulos anteriores sin quejarse
+# y murio en el primer `<function>`--. Sus `<class>` tampoco son modulos.
+ETIQUETAS_DE_MODULO_CON_BUNDLE = ("function", "smart-service", "function-category")
+
+# Solo una de las tres se ha visto fallar de verdad (`<function>`, con el mensaje
+# APNX-1-4200-000 de un Appian real). Las otras dos salen de la documentacion, que
+# describe un mecanismo unico para todos los modulos. Quien informe un hallazgo
+# puede decir cual es cual en vez de dar todo por igual de comprobado.
+ETIQUETAS_CON_FALLO_OBSERVADO = ("function",)
 
 
 def modulos_con_bundle(xml_manifiesto: str) -> list[tuple[str, str]]:
@@ -534,6 +553,61 @@ def modulos_con_bundle(xml_manifiesto: str) -> list[tuple[str, str]]:
         for hijo in raiz
         if hijo.tag in ETIQUETAS_DE_MODULO_CON_BUNDLE
     ]
+
+
+def clases_declaradas(xml_manifiesto: str) -> list[tuple[str, str]]:
+    """`[(donde, nombre_cualificado)]` de TODA clase que el manifiesto nombra.
+
+    Appian las carga por nombre al desplegar, una por una: el atributo `class`
+    de cada modulo --`<function>`, `<smart-service>`, `<servlet>`-- y cada
+    `<class>` de un `<datatype>`. Una que no este en el JAR es un fallo de carga
+    al desplegar, no un error de compilacion: `javac` nunca ve el XML, asi que
+    un nombre mal escrito ahi llega intacto hasta el servidor.
+
+    `donde` es la etiqueta del elemento, para que el hallazgo pueda decir de
+    cual de ellos habla cuando hay varios.
+    """
+    raiz = ET.fromstring(xml_manifiesto)
+    encontradas: list[tuple[str, str]] = []
+    for elemento in raiz.iter():
+        atributo = (elemento.get("class") or "").strip()
+        if atributo:
+            encontradas.append((elemento.tag, atributo))
+        if elemento.tag == "class" and (elemento.text or "").strip():
+            encontradas.append(("datatype", elemento.text.strip()))
+    return encontradas
+
+
+def claves_de_modulo_repetidas(xml_manifiesto: str) -> list[str]:
+    """Las `key` que aparecen mas de una vez entre los modulos del manifiesto.
+
+    Cada modulo es una entrada distinta en el registro de plug-ins de Appian y
+    su key la identifica; dos iguales dejan una de las dos sin alcanzar, y cual
+    de ellas no esta definido.
+    """
+    raiz = ET.fromstring(xml_manifiesto)
+    vistas: list[str] = []
+    for hijo in raiz:
+        key = hijo.get("key", "")
+        if key and hijo.tag in ETIQUETAS_DE_MODULO_CON_BUNDLE + ("servlet", "datatype"):
+            vistas.append(key)
+    return sorted({k for k in vistas if vistas.count(k) > 1})
+
+
+def procedencia_de_modulo(etiqueta: str) -> str:
+    """La frase con la que un hallazgo dice CUANTO se sabe de su propio caso.
+
+    Dar por igual de comprobado lo observado y lo deducido es como se colo la
+    afirmacion --escrita, razonada y falsa-- de que el nombre del bundle de una
+    funcion era libre. Quien lea el hallazgo merece saber si detras hay un
+    servidor que se nego a cargar el plug-in o una pagina de documentacion.
+    """
+    if etiqueta in ETIQUETAS_CON_FALLO_OBSERVADO:
+        return ("Sin el, el plug-in NO DESPLIEGA: es el caso observado en un Appian real "
+                "(APNX-1-4200-000).")
+    return ("Appian aplica a este modulo la misma regla de bundle que a los demas, segun su "
+            "documentacion; el fallo de despliegue esta observado para <function>, no para "
+            "este elemento.")
 
 
 def ruta_de_bundle(key_plugin: str, key_modulo: str, locale: str) -> str:
@@ -662,16 +736,56 @@ def escapar_no_ascii(texto: str) -> str:
     return "".join(salida)
 
 
+def horneada_equivalente(nombre: str) -> str | None:
+    """La salida horneada que PRODUCE EL MISMO MIEMBRO JAVA que `nombre`, si la hay.
+
+    Se compara por el identificador del campo, no por el nombre del contrato:
+    `errorOccurred` y `ErrorOccurred` son dos nombres distintos para Appian y
+    **el mismo campo** para javac, porque los dos dan `private … errorOccurred`
+    y `getErrorOccurred()`. Comparar por nombre exacto --que es lo que se hacia--
+    dejaba pasar la caja cambiada, y entonces el `.java` salia con el campo y el
+    getter DUPLICADOS: «variable errorOccurred is already defined». No es un
+    fallo de despliegue sino de compilacion, y aun asi se escapaba de la puerta.
+    """
+    objetivo = identificador_java(nombre).lower()
+    for reservada in SALIDAS_HORNEADAS:
+        if identificador_java(reservada).lower() == objetivo:
+            return reservada
+    return None
+
+
 def salida_horneada(salida: dict) -> bool:
-    """La salida se corresponde con un miembro que la plantilla ya declara."""
+    """La salida se mapea sobre un miembro que la plantilla ya declara.
+
+    Exige el nombre EXACTO ademas del tipo: con la caja cambiada no se mapea,
+    porque el output que Appian acabaria publicando es el del accesor horneado
+    (`ErrorOccurred`) y no el que el autor escribio. Ese caso lo rechaza
+    `colision_con_horneada` en vez de resolverlo en silencio.
+    """
     return SALIDAS_HORNEADAS.get(salida.get("nombre", "")) == salida.get("tipo_java")
 
 
-def colision_con_horneada(salida: dict) -> bool:
-    """Mismo nombre reservado, tipo distinto: no se puede mapear, y el `.java`
-    saldria con el metodo duplicado («already defined»)."""
+def colision_con_horneada(salida: dict) -> str | None:
+    """El motivo por el que esta salida chocaria con un miembro horneado, o None.
+
+    Dos casos, y los dos acaban en un `.java` que no compila:
+      - mismo nombre reservado y tipo distinto;
+      - el mismo miembro Java con otra caja (`errorOccurred`).
+    """
     nombre = salida.get("nombre", "")
-    return nombre in SALIDAS_HORNEADAS and SALIDAS_HORNEADAS[nombre] != salida.get("tipo_java")
+    equivalente = horneada_equivalente(nombre)
+    if equivalente is None:
+        return None
+    esperado = SALIDAS_HORNEADAS[equivalente]
+    if nombre != equivalente:
+        return (f"se escribe «{equivalente}», no «{nombre}»: los dos dan el mismo campo y el "
+                f"mismo getter, asi que el .java saldria duplicado, y el nombre que Appian "
+                f"publica es el del accesor")
+    if esperado != salida.get("tipo_java"):
+        return (f"el miembro que la plantilla ya declara es de tipo {esperado} y no "
+                f"{salida.get('tipo_java')}: el .java saldria con el getter duplicado. "
+                f"Usar {esperado}, o renombrar la salida")
+    return None
 
 
 def tipo_java_emitible(tipo: str) -> str | None:

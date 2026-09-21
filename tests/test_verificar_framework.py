@@ -42,8 +42,14 @@ def clase(nombre, cadenas=(), metodos=()):
     )
 
 
-def test_contrato_correcto_no_da_hallazgos():
-    assert vf.comprobar(CONTRATO_BASE, XML_BASE, []) == []
+def test_contrato_correcto_no_da_ningun_error():
+    """Ni un error. El unico hallazgo admitido es el AVISO con el que R-F08
+    declara que no ha podido comprobar la compatibilidad con una version
+    desplegada, porque el contrato no declara ninguna: antes esa regla se
+    saltaba en silencio, y un silencio se lee igual que un verde."""
+    hallazgos = vf.comprobar(CONTRATO_BASE, XML_BASE, [])
+    assert [h for h in hallazgos if h.severidad == "error"] == []
+    assert {(h.regla, h.severidad) for h in hallazgos} == {("R-F08", "aviso")}
 
 
 def test_paleta_remapeada_en_silencio_es_error():
@@ -481,3 +487,178 @@ def test_el_BOM_no_impide_seguir_analizando_el_resto_del_fichero():
     reglas = [h.regla for h in vf.comprobar_guardarrailes("servlet", GRADLE_SANO, con_bom, "")]
 
     assert len(reglas) == 2, f"esperaba BOM + exclusion sin firmar, salieron {reglas}"
+
+
+# ─── R-F16 y R-F17 · lo que Appian resuelve del manifiesto al desplegar ───
+#
+# `javac` no lee el `appian-plugin.xml`. Un nombre de clase mal escrito ahi, o
+# dos modulos con la misma key, llegan intactos hasta el servidor y fallan al
+# cargar el modulo. R-F12 miraba el sentido contrario --que la clase DEL
+# CONTRATO este declarada-- y solo una.
+
+CLASE_DEL_XML = "com.raul.appian.ejemplo.smartservice.EjemploSmartService"
+
+
+def test_R_F16_dispara_si_la_clase_del_manifiesto_no_esta_compilada():
+    compiladas = [clase("com.raul.appian.ejemplo.smartservice.OtraCosa")]
+    xml = XML_BASE.replace("EjemploSmartService", "EjemploSmartServic")
+    hallazgos = vf.comprobar(CONTRATO_BASE, xml, compiladas)
+    assert "R-F16" in reglas(hallazgos)
+    assert any("EjemploSmartServic" in h.mensaje for h in hallazgos if h.regla == "R-F16")
+
+
+def test_R_F16_no_dispara_cuando_la_clase_existe():
+    assert "R-F16" not in reglas(vf.comprobar(CONTRATO_BASE, XML_BASE, [clase(CLASE_DEL_XML)]))
+
+
+def test_R_F16_tambien_mira_las_clases_de_un_datatype():
+    """Un `<datatype>` no es un modulo con bundle, pero sus `<class>` si las
+    carga Appian por nombre."""
+    xml = XML_BASE.replace(
+        "</appian-plugin>",
+        '  <datatype key="tipos" name="Tipos">'
+        "<class>com.raul.appian.ejemplo.NoExiste</class></datatype></appian-plugin>",
+    )
+    hallazgos = vf.comprobar(CONTRATO_BASE, xml, [clase(CLASE_DEL_XML)])
+    assert "R-F16" in reglas(hallazgos)
+    assert any("NoExiste" in h.mensaje for h in hallazgos if h.regla == "R-F16")
+
+
+def test_R_F16_calla_cuando_no_le_han_dado_clases():
+    """Sin clases compiladas no se puede saber si la declarada existe. Callar
+    aqui es correcto --la llamada unitaria de otra regla no fabrica clases-- y
+    no abre un hueco: `main()` siempre las pasa, y R-J10 lo repite sobre el JAR.
+    """
+    xml = XML_BASE.replace("EjemploSmartService", "NoExisteEnNingunSitio")
+    assert "R-F16" not in reglas(vf.comprobar(CONTRATO_BASE, xml, []))
+
+
+def test_R_F17_dispara_con_dos_modulos_de_la_misma_key():
+    xml = XML_BASE.replace(
+        "</appian-plugin>",
+        '  <smart-service name="Otro" key="ejemplo" class="com.raul.appian.ejemplo.Otro"/>'
+        "</appian-plugin>",
+    )
+    hallazgos = vf.comprobar(CONTRATO_BASE, xml, [])
+    assert "R-F17" in reglas(hallazgos)
+    assert any("ejemplo" in h.mensaje for h in hallazgos if h.regla == "R-F17")
+
+
+def test_R_F17_no_dispara_con_keys_distintas():
+    xml = XML_BASE.replace(
+        "</appian-plugin>",
+        '  <smart-service name="Otro" key="otro" class="com.raul.appian.ejemplo.Otro"/>'
+        "</appian-plugin>",
+    )
+    assert "R-F17" not in reglas(vf.comprobar(CONTRATO_BASE, xml, []))
+
+
+# ─── R-F18, R-F19, R-F20 · mas cosas que solo fallan al desplegar ─────────
+
+
+def _contrato_ss(entradas, salidas):
+    return {**CONTRATO_BASE, "entradas": entradas, "salidas": salidas}
+
+
+def test_R_F18_una_entrada_y_una_salida_con_el_mismo_nombre():
+    """«Input and output names must be unique, or deployment fails.»"""
+    datos = _contrato_ss([{"nombre": "doc", "tipo_java": "Long", "required": "ALWAYS",
+                           "descripcion": "d"}],
+                         [{"nombre": "doc", "tipo_java": "String", "descripcion": "r"}])
+    assert "R-F18" in reglas(vf.comprobar(datos, XML_BASE, []))
+
+
+def test_R_F18_dos_nombres_que_solo_difieren_en_la_caja():
+    """javac los ve como dos campos distintos y el build pasa; Appian lee el
+    nombre del ACCESOR, asi que para el son el mismo."""
+    datos = _contrato_ss([{"nombre": "documento", "tipo_java": "Long", "required": "ALWAYS",
+                           "descripcion": "d"},
+                          {"nombre": "Documento", "tipo_java": "Long", "required": "ALWAYS",
+                           "descripcion": "d"}],
+                         [{"nombre": "resultado", "tipo_java": "String", "descripcion": "r"}])
+    assert "R-F18" in reglas(vf.comprobar(datos, XML_BASE, []))
+
+
+def test_una_salida_con_la_caja_cambiada_de_una_horneada_es_R_F03():
+    """La plantilla escribe siempre `private Boolean errorOccurred;` y
+    `getErrorOccurred()`. Un contrato que declare la salida `errorOccurred`
+    --misma palabra, otra caja-- no se mapeaba sobre ese miembro, porque el
+    emisor comparaba por nombre EXACTO: se emitia otra vez, y el `.java` salia
+    con el campo y el getter DUPLICADOS. Reproducido andamiando un contrato
+    real: «variable errorOccurred is already defined».
+
+    Lo dice R-F03, que es la regla de las colisiones con lo horneado, con el
+    nombre exacto que hay que escribir. R-F18 se aparta para no decir dos veces
+    lo mismo con palabras distintas."""
+    datos = _contrato_ss([{"nombre": "doc", "tipo_java": "Long", "required": "ALWAYS",
+                           "descripcion": "d"}],
+                         [{"nombre": "errorMessage", "tipo_java": "String", "descripcion": "r"}])
+    hallazgos = vf.comprobar(datos, XML_BASE, [])
+    assert "R-F03" in reglas(hallazgos)
+    assert any("«ErrorMessage»" in h.mensaje for h in hallazgos if h.regla == "R-F03")
+    assert "R-F18" not in reglas(hallazgos)
+
+
+def test_una_salida_horneada_con_el_nombre_exacto_no_es_colision():
+    """Con el nombre y el tipo correctos SI se mapea sobre el miembro
+    horneado, y asi lo declara el plug-in aprobado del AppMarket."""
+    datos = _contrato_ss([{"nombre": "doc", "tipo_java": "Long", "required": "ALWAYS",
+                           "descripcion": "d"}],
+                         [{"nombre": "ErrorMessage", "tipo_java": "String", "descripcion": "r"}])
+    assert "R-F03" not in reglas(vf.comprobar(datos, XML_BASE, []))
+
+
+def test_R_F18_no_dispara_con_nombres_distintos():
+    assert "R-F18" not in reglas(vf.comprobar(CONTRATO_BASE, XML_BASE, []))
+
+
+def test_R_F18_solo_aplica_a_smart_services():
+    """Una function no tiene outputs: sus parametros son otra cosa."""
+    datos = {**CONTRATO_BASE, "plugin": {**CONTRATO_BASE["plugin"], "tipo": "function"},
+             "entradas": [{"nombre": "doc", "tipo_java": "Long", "descripcion": "d"}],
+             "salidas": [{"nombre": "doc", "tipo_java": "String", "descripcion": "r"}]}
+    assert "R-F18" not in reglas(vf.comprobar(datos, XML_BASE, []))
+
+
+XML_CON_DATATYPE_ANTES = (
+    '<appian-plugin key="com.raul.appian.ejemplo">'
+    '<datatype key="tipos" name="Tipos"><class>com.raul.appian.ejemplo.T</class></datatype>'
+    '<smart-service key="ejemplo" name="Ejemplo" '
+    'class="com.raul.appian.ejemplo.smartservice.EjemploSmartService"/>'
+    "</appian-plugin>"
+)
+
+
+def test_R_F19_datatype_declarado_despues_de_quien_lo_usa():
+    """«each datatype module must be declared before the smart service or
+    function that uses it». El orden de un XML no lo ve ninguna otra regla."""
+    xml = (
+        '<appian-plugin key="com.raul.appian.ejemplo">'
+        '<smart-service key="ejemplo" name="Ejemplo" '
+        'class="com.raul.appian.ejemplo.smartservice.EjemploSmartService"/>'
+        '<datatype key="tipos" name="Tipos"><class>com.raul.appian.ejemplo.T</class></datatype>'
+        "</appian-plugin>"
+    )
+    assert "R-F19" in reglas(vf.comprobar(CONTRATO_BASE, xml, []))
+
+
+def test_R_F19_no_dispara_con_el_datatype_delante():
+    assert "R-F19" not in reglas(vf.comprobar(CONTRATO_BASE, XML_CON_DATATYPE_ANTES, []))
+
+
+def test_R_F19_no_dispara_sin_datatypes():
+    assert "R-F19" not in reglas(vf.comprobar(CONTRATO_BASE, XML_BASE, []))
+
+
+def test_R_F20_jakarta_xml_bind_no_lo_soporta_appian():
+    """Compila, porque es el mismo paquete renombrado; el tipo no se registra
+    al desplegar. «jakarta.xml.bind.annotation is not supported»."""
+    clases = [clase("com.raul.appian.ejemplo.T")]
+    clases[0].tipos_referenciados = {"jakarta.xml.bind.annotation.XmlType"}
+    assert "R-F20" in reglas(vf.comprobar(CONTRATO_BASE, XML_BASE, clases))
+
+
+def test_R_F20_javax_xml_bind_es_el_correcto():
+    clases = [clase("com.raul.appian.ejemplo.T")]
+    clases[0].tipos_referenciados = {"javax.xml.bind.annotation.XmlType"}
+    assert "R-F20" not in reglas(vf.comprobar(CONTRATO_BASE, XML_BASE, clases))
