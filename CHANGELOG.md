@@ -3,6 +3,32 @@
 Por versión, la más reciente arriba. Lo que afecta a plug-ins ya generados va al principio de su
 entrada.
 
+## 2026-09-22 · versión 0.2.5 — tres cosas que el flujo hacía tropezar
+
+Ninguna cambia un veredicto: las tres cuestan tiempo, y las tres salieron de construir plug-ins
+de verdad siguiendo la skill.
+
+Lo que afecta a plug-ins **ya generados**:
+
+- **El javadoc de la plantilla de smart service nombraba mal el paquete del dominio.** Decía
+  `<paquete>.service` y el convenio —el que comprueba la capa de superficie— es
+  `<paquete>.dominio`. Cosmético, pero engañoso, y lo arrastraban todos los smart services
+  generados. Los otros tres tipos ya lo decían bien.
+
+Y en `referencias/secsp-servlet.md`, tres huecos que hacían perder un rato largo:
+
+- **El identificador corto que muestra el build no sirve como `<Bug pattern="…">`.** `SECSP` hay
+  que escribirlo `SERVLET_PARAMETER`, y `SECCRLFLOG`, `CRLF_INJECTION_LOGS`. Con el corto, SpotBugs
+  carga el fichero sin protestar y no excluye nada: `BUILD FAILED` sin una línea que lo explique.
+  No puede producir un certificado verde —si la exclusión no se aplica, la puerta sale en rojo—,
+  pero el síntoma es idéntico al de una exclusión que no procedía.
+- **`CRLF_INJECTION_LOGS` no se cierra como `SECXSS2`.** Los tres caminos documentados para aquél
+  no lo quitan. Es la única de las cuatro que suele acabar en exclusión legítima, y queda escrito
+  qué argumento hay que poder firmar y cuándo deja de valer.
+- **El andamiaje de servlet genera `doGet`, y solo `doGet`.** `POST` se escribe a mano, y leer un
+  cuerpo de petición no trae nada hecho: o se declara una librería JSON en el contrato, con su
+  licencia, o se analiza acotando tamaño y profundidad antes de recorrerlo.
+
 ## 2026-09-22 · versión 0.2.4 — el nombre que Appian publica sale del accesor
 
 Dos correspondencias que nadie miraba, y las dos de la misma familia: **una comprobación cuyos dos

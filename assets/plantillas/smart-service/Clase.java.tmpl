@@ -13,10 +13,10 @@ import org.apache.log4j.Logger;
 /**
  * {{NOMBRE}}.
  *
- * <p>La logica de negocio vive en el dominio ({{PAQUETE}}.service), que no
+ * <p>La logica de negocio vive en el dominio ({{PAQUETE}}.dominio), que no
  * conoce el SDK de Appian: esta clase solo traduce entre el framework y el
- * dominio (D19). Esa separacion es lo que permite probar la logica sin cargar
- * el SDK.
+ * dominio. Esa separacion es lo que permite probar la logica sin cargar el
+ * SDK, y es la que comprueba la capa de superficie documentada.
  */
 @{{ANOTACION_PALETA}}
 @Order({ {{ORDEN_ENTRADAS}} })
