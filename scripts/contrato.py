@@ -482,12 +482,44 @@ def es_bundle(ruta_o_nombre: str) -> bool:
 # (`function.{{FUNCION}}.description` en los dos `bundle_*.properties.tmpl`),
 # no el andamiador, asi que no hay emisor que enganchar aqui sin pasar tambien
 # esa clave a variable. Se deja dicho para que no se lea como un olvido.
+def nombre_de_acp(nombre: str) -> str:
+    """El nombre con el que Appian publica una entrada o salida de smart service.
+
+    NO es el nombre del campo Java: es el del ACCESOR sin su `set`/`get`, y por
+    eso empieza en mayuscula aunque el campo sea `documentoOrigen`. Un `String
+    documentoOrigen` genera `setDocumentoOrigen`, y Appian lo publica como
+    `DocumentoOrigen`.
+
+    Tres fuentes lo sostienen. *Smart Service Plug-ins > Internationalization*:
+    «`InputName` and `OutputName` are the camelCase names (or `@Name` annotated
+    names) of the targets of the getter and setter methods (after removing the
+    prepended `get-` or `set-`)». La misma pagina, al describir el nombre que
+    Appian se inventa cuando la clave no esta: «For example: `MySmartServiceInput`
+    is rendered as **My Smart Service Input**» --su propio ejemplo de nombre ACP
+    empieza en mayuscula--. Y el plug-in de referencia, aprobado y desplegado,
+    escribe `input.SourceDocument.displayName` para su `setSourceDocument`.
+
+    Capitalizar aqui y no pedirselo al contrato es deliberado: `documentoOrigen`
+    es lo que un programador escribe sin pensar, y antes de esto el bundle salia
+    con `input.documentoOrigen` --una clave que Appian no resuelve nunca--. No
+    rompe el despliegue: la misma pagina dice que entonces el display name «is
+    rendered automatically», asi que lo que se pierde en silencio es la
+    descripcion que la entrevista se molesto en redactar y el tooltip entero.
+
+    `capitalize()` no vale: pone en minuscula todo lo demas y `CsvContent` se
+    volveria `Csvcontent`.
+    """
+    return nombre[:1].upper() + nombre[1:]
+
+
 def claves_de_entrada(nombre: str) -> tuple[str, str]:
-    return f"input.{nombre}.displayName", f"input.{nombre}.comment"
+    acp = nombre_de_acp(nombre)
+    return f"input.{acp}.displayName", f"input.{acp}.comment"
 
 
 def claves_de_salida(nombre: str) -> tuple[str, str]:
-    return f"output.{nombre}.displayName", f"output.{nombre}.comment"
+    acp = nombre_de_acp(nombre)
+    return f"output.{acp}.displayName", f"output.{acp}.comment"
 
 
 def clave_de_funcion(funcion: str) -> str:
@@ -615,9 +647,24 @@ def ruta_de_bundle(key_plugin: str, key_modulo: str, locale: str) -> str:
     return f"{key_plugin.replace('.', '/')}/{key_modulo}_{locale}.properties"
 
 
+def titulo_humano(nombre: str) -> str:
+    """El VALOR del `displayName`: el nombre partido por sus mayusculas.
+
+    `documentoOrigen` da «Documento Origen», que es exactamente lo que Appian
+    se inventa cuando no encuentra la clave --«the display name is rendered
+    automatically using the node input (ACP) name, with spaces separating the
+    camel cased name»--. Poner el identificador crudo dejaba al disenador algo
+    PEOR que no poner nada: la etiqueta decia `documentoOrigen` en vez de
+    «Documento Origen». Escribirlo asi es el suelo, no el techo: el texto se
+    puede mejorar a mano, y el plug-in de referencia lo hace.
+    """
+    partido = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", nombre_de_acp(nombre))
+    return re.sub(r"\s+", " ", partido).strip()
+
+
 def _lineas_de_etiqueta(claves: tuple[str, str], nombre: str, descripcion: str) -> str:
     display, comment = claves
-    return f"{display}={nombre}\n{comment}={descripcion}"
+    return f"{display}={titulo_humano(nombre)}\n{comment}={descripcion}"
 
 
 # UN argumento por cosa. La primera version recibia la tupla de claves Y el
@@ -629,9 +676,10 @@ def _lineas_de_etiqueta(claves: tuple[str, str], nombre: str, descripcion: str) 
 def lineas_de_entrada(nombre: str, descripcion: str) -> str:
     """Las dos lineas `clave=valor` que etiquetan una entrada.
 
-    Appian lee el nombre por el ACCESOR, no por el campo, asi que el
-    `displayName` lleva el nombre del contrato tal cual --con su caja-- y no el
-    identificador Java. Es el mismo fundamento de `identificador_java`.
+    Appian lee el nombre por el ACCESOR, no por el campo: la CLAVE la compone
+    `nombre_de_acp`, que es donde vive esa regla y sus tres fuentes. El VALOR
+    del `displayName` es distinto --es texto para el diseñador, no un
+    identificador-- y va el nombre del contrato tal cual.
     """
     return _lineas_de_etiqueta(claves_de_entrada(nombre), nombre, descripcion)
 

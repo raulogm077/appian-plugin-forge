@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "appian-plugin-forge",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "description": "Genera plugins de Appian (Function de lectura o writer, Smart Service y Servlet) desde una entrevista, y los verifica en cuatro capas hasta el limite de lo posible en local.",
       "author": {
         "name": "Raul Gomez Moya"

@@ -6,7 +6,12 @@ es la suya: la documentación de Appian (con la página y, cuando la hay, la cit
 inglés), la política del AppMarket, el SDK `com.appian:appian-plug-in-sdk:26.3` inspeccionado
 con `javap`, o la coherencia interna del propio forge cuando la regla es de diseño propio.
 
-## Capa 1A — reglas del framework de Appian (`R-F01`–`R-F20`, `scripts/verificar_framework.py`)
+## Capa 1A — reglas del framework de Appian (`R-F01`–`R-F21`, `scripts/verificar_framework.py`)
+
+**Tres de ellas corren además en el ANDAMIAJE**, antes de escribir ningún fichero: `R-F02`,
+`R-F03` y `R-F08` solo necesitan el contrato, y esperar al paso de verificación sería tarde —
+esa capa exige clases compiladas, y un contrato que genera código que no compila nunca llegaría
+a ella. Las invoca `andamiar.py`, que llama a las reglas de este mismo fichero y no a una copia.
 
 | ID | Qué comprueba | Fuente | Consecuencia si se incumple |
 |---|---|---|---|
@@ -31,6 +36,7 @@ con `javap`, o la coherencia interna del propio forge cuando la regla es de dise
 | `R-F18` | **En smart services**, ningún nombre de entrada o salida coincide con otro, comparando por el nombre que Appian publica, que es el del **accesor**. Entran en el conjunto las dos salidas que la plantilla hornea. | *Smart Service Plug-ins > Internationalization*, cita textual: *"Input and output names must be unique, or deployment fails."* El nombre lo lee del accesor, no del campo, por la misma cita que fundamenta `R-B06`. | El plug-in **no despliega**. Dos nombres que solo difieren en la caja son dos campos distintos para `javac` —el build pasa— y el mismo para Appian. |
 | `R-F19` | Cada `<datatype>` del manifiesto va declarado **antes** del `<function>` o `<smart-service>` que lo usa. | *Custom Data Types from Java Object*, cita textual: *"Within `appian-plugin.xml`, each `datatype` module must be declared before the smart service or function that uses it."* | Orden de carga de módulos: el tipo no está registrado cuando el módulo que lo devuelve se resuelve. El orden de un XML no lo ve ninguna otra comprobación. |
 | `R-F20` | Ninguna clase referencia `jakarta.xml.bind`. | *Custom Data Types from Java Object*, cita textual: *"Plug-ins must use `javax.xml.bind.annotation` to annotate classes for a custom data type; `jakarta.xml.bind.annotation` is not supported."* | Compila igual, porque es el mismo paquete renombrado, y el tipo no se registra al desplegar. |
+| `R-F21` | **En smart services**: las entradas que declara el BYTECODE (`set*` anotados con `@Input`) son las del contrato; cada salida del contrato tiene su `get*` sin `set*` hermano; y toda clave `input.X`/`output.X` del bundle `_en_US` nombra un ACP que la clase publica de verdad. Si algún accesor lleva `@Name`, la regla declara que **no** lo ha comprobado, porque esa anotación renombra el ACP y el lector de `.class` lee tipos de anotación, no sus valores. | *Smart Service Plug-ins > Internationalization > Translation keys*: *"`InputName` and `OutputName` are the camelCase names (or `@Name` annotated names) of the targets of the getter and setter methods (after removing the prepended `get-` or `set-`)"*. La misma página, sobre el getter con setter: *"If you define a corresponding setter method, the getter method is treated as an input."* | El despliegue **no** falla: la misma página dice que sin la clave *"the display name is rendered automatically using the node input (ACP) name"*. Lo que se pierde en silencio es la descripción redactada y el tooltip (*"If a comment is not defined, no tooltip is displayed"*), y `GUIA_INTEGRACION.md` documenta una entrada con un nombre que el diseñador no va a ver. |
 
 ## Capa 1B — políticas de AppMarket (`R-A01`–`R-A10`, `scripts/verificar_appmarket.py`)
 

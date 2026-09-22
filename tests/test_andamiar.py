@@ -45,9 +45,17 @@ def test_paleta_se_traduce_a_anotacion_de_conveniencia():
 
 
 def test_claves_de_bundle_usan_el_convenio_del_tipo():
+    """La CLAVE es un identificador que Appian resuelve y el VALOR es texto
+    para el disenador; son dos cosas distintas y cada una tiene su regla.
+
+    La clave lleva el nombre del ACP --el del accesor, con su mayuscula
+    inicial--: un `input.documentoOrigen` no lo lee nadie, porque el accesor es
+    `setDocumentoOrigen`. El valor va partido por sus mayusculas, que es lo que
+    Appian escribe cuando no encuentra la clave; poner el identificador crudo
+    dejaba al disenador algo PEOR que no poner nada."""
     v = andamiar.construir_variables(CONTRATO)
-    assert "input.documentoOrigen.displayName=" in v["CLAVES_ENTRADAS"]
-    assert "input.documentoOrigen.comment=" in v["CLAVES_ENTRADAS"]
+    assert "input.DocumentoOrigen.displayName=Documento Origen" in v["CLAVES_ENTRADAS"]
+    assert "input.DocumentoOrigen.comment=El documento" in v["CLAVES_ENTRADAS"]
     assert "smartservice." not in v["CLAVES_ENTRADAS"]
 
 
@@ -712,3 +720,118 @@ def test_la_function_NO_hornea_una_clave_de_error_que_no_puede_usar(tmp_path):
             f"{tipo} vuelve a hornear `error.unexpected` en {con_clave}, y del lado de "
             f"expresion no hay `userMessage` que la lea: es boilerplate muerto"
         )
+
+
+# ---------------------------------------------------------------------------
+# La puerta que le faltaba al andamiaje.
+#
+# `andamiar.py` se describia como «sustitucion de variables: sale bien
+# siempre», y no era verdad. Un contrato con la salida `errorOccurred` en
+# minuscula genera una clase con el campo Y el getter duplicados --javac da
+# «variable errorOccurred is already defined»-- y NO compila. La regla que lo
+# diagnostica, `R-F03`, existia, con el mensaje exacto... en la capa 1A, que
+# corre en el paso 5 y EXIGE clases compiladas. El defecto que la regla
+# describe impide compilar, asi que la regla era inalcanzable justo donde
+# hacia falta.
+#
+# La puerta es GENERICA --todo error de las reglas que solo leen el contrato--
+# y estos dos tests la atan como generica: si alguien la estrechara a `R-F03`,
+# el de `R-F08` se pondria rojo.
+# ---------------------------------------------------------------------------
+
+def _escribir_contrato(tmp_path, cuerpo_toml):
+    ruta = tmp_path / "contrato.md"
+    ruta.write_text(f"# Contrato\n\n```toml\n{cuerpo_toml}\n```\n", encoding="utf-8")
+    return ruta
+
+
+_BASE_SMART_SERVICE = """
+[plugin]
+key = "com.ensayo.puerta"
+nombre = "Puerta"
+version = "1.0.0"
+paquete = "com.ensayo.puerta"
+tipo = "smart-service"
+perfil = "estandar"
+application_version_min = "23.2"
+descripcion = "Ejercita la puerta del andamiaje."
+
+[clase]
+nombre = "PuertaSmartService"
+paleta = "Data Services"
+
+[bundle]
+nombre = "puerta"
+
+[[entradas]]
+nombre = "entrada"
+tipo_java = "String"
+required = "ALWAYS"
+descripcion = "Una entrada."
+
+[capacidades]
+parsea_formatos_ajenos = false
+sale_a_la_red = false
+toca_credenciales = false
+datos_personales = false
+
+[confirmacion]
+usuario_confirmo = true
+"""
+
+
+def test_el_andamiaje_se_niega_ante_una_salida_que_choca_con_la_plantilla(tmp_path, monkeypatch, capsys):
+    """R-F03: `errorOccurred` en minuscula da un .java que no compila."""
+    ruta = _escribir_contrato(tmp_path, _BASE_SMART_SERVICE + """
+[[salidas]]
+nombre = "errorOccurred"
+tipo_java = "Boolean"
+descripcion = "Choca con el miembro de la plantilla."
+""")
+    destino = tmp_path / "destino"
+    monkeypatch.setattr("sys.argv", ["andamiar.py", str(ruta), str(destino)])
+    assert andamiar.main() == 1
+    salida = capsys.readouterr().out
+    assert "R-F03" in salida
+    assert not destino.exists(), "no se genera NADA cuando la puerta rechaza"
+
+
+def test_el_andamiaje_se_niega_ante_una_firma_que_rompe_procesos_vivos(tmp_path, monkeypatch, capsys):
+    """R-F08, y esta a proposito: la puerta es GENERICA, no una copia de R-F03.
+
+    Estrecharla a una sola regla dejaria pasar la de peor consecuencia del
+    sistema --reutilizar la key cambiando inputs rompe procesos EN MARCHA--.
+    """
+    ruta = _escribir_contrato(tmp_path, _BASE_SMART_SERVICE + """
+[[salidas]]
+nombre = "resultado"
+tipo_java = "Long"
+descripcion = "El resultado."
+
+[version_anterior]
+key = "com.ensayo.puerta"
+version = "1.0.0"
+
+[version_anterior.firma]
+clase = "PuertaSmartService"
+entradas = ["entrada:Long"]
+salidas = ["resultado:Long"]
+""")
+    destino = tmp_path / "destino"
+    monkeypatch.setattr("sys.argv", ["andamiar.py", str(ruta), str(destino)])
+    assert andamiar.main() == 1
+    assert "R-F08" in capsys.readouterr().out
+    assert not destino.exists()
+
+
+def test_la_puerta_del_andamiaje_deja_pasar_los_contratos_legitimos(tmp_path, monkeypatch):
+    """El otro lado, que es el que evita que la puerta se vuelva un estorbo:
+    los ocho contratos de `tests/fixtures/contratos` que la puerta determinista
+    admite tienen que seguir andamiando."""
+    fixtures = pathlib.Path(__file__).resolve().parent / "fixtures" / "contratos"
+    admitidos = [f for f in sorted(fixtures.glob("*.md"))
+                 if not contrato.validar(contrato.cargar(f))]
+    assert admitidos, "el corpus de fixtures no puede estar vacio"
+    for f in admitidos:
+        datos = contrato.cargar(f)
+        assert andamiar.errores_de_contrato(datos) == [], f"{f.name} no deberia abortar"

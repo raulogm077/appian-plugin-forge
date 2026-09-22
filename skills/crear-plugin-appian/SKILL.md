@@ -152,8 +152,16 @@ que una de lectura, porque comparte con ella manifiesto y bundles—
 con las firmas del contrato, el `build.gradle` compuesto según el perfil, el *wrapper* de
 Gradle, `appian-plugin.xml` y —salvo en servlets, que no cargan bundle— los `.properties`
 `_en_US`/`_es_ES`, y deja una copia literal del contrato en `<directorio-destino>/docs/contrato.md`,
-de donde la leen VERIFICACIÓN (paso 5) y DOSSIER (paso 7). Es sustitución de variables: sale
-bien siempre, y son justo los ficheros donde un error cuesta un ciclo de aprobación entero.
+de donde la leen VERIFICACIÓN (paso 5) y DOSSIER (paso 7). Es sustitución de variables sobre
+ficheros donde un error cuesta un ciclo de aprobación entero, así que la sustitución en sí no
+puede fallar — pero **el contrato del que sustituye sí puede pedir algo imposible**, y por eso
+antes de escribir nada corren **las reglas del framework que solo leen el contrato**. Si alguna
+da error, no se genera nada y el mensaje dice cuál. Son las que no necesitan ni manifiesto ni
+bytecode: `R-F02` (un primitivo no admite `OPTIONAL`), `R-F03` (una salida que choca con un
+miembro que la plantilla ya declara **no compila**: saldría el campo y el getter duplicados) y
+`R-F08` (cambiar la firma reutilizando la clave rompe procesos vivos). Corren aquí porque en el
+paso 5 ya sería tarde: esa capa exige clases compiladas, y justo el contrato que genera código
+que no compila nunca llegaría a ella.
 Deja también `docs/decisiones.md` —la pieza 2 del dossier, y donde `R-F14` busca la firma de cada
 exclusión activa de SpotBugs—, que en un smart service nace ya con una decisión escrita: la
 exclusión de `CRLF_INJECTION_LOGS` que la propia plantilla activa, con su porqué y con la
@@ -195,7 +203,9 @@ añadiría un modo de fallo que hoy no tiene.
 **Criterio de salida:** `andamiar.py` termina en 0, cada ruta que imprime como escrita existe de
 verdad en el destino, y el destino está dentro de un repositorio git. Ojo con lo que ese criterio
 NO puede ver: lo que falta no se imprime, así que no sirve para comprobar que se generó todo lo
-que se esperaba.
+que se esperaba. Y si termina en 1 nombrando una regla, **el arreglo va en el contrato**: el
+andamiaje no puede tapar lo que el contrato pide mal, y repetirlo sin corregirlo da el mismo
+resultado.
 
 ### 4 · CONSTRUCCIÓN INCREMENTAL POR SLICES (BUILD, parte 2)
 

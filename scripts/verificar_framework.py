@@ -246,9 +246,45 @@ def comprobar_guardarrailes(tipo: str, gradle: str, exclusiones: str,
     return hallazgos
 
 
+#: La anotacion que marca un setter como entrada de smart service. El nombre
+#: del ACP sale del metodo que la lleva, no del contrato.
+ANOTACION_INPUT = "com.appiancorp.suiteapi.process.framework.Input"
+
+
+def acps_del_bytecode(clase) -> tuple[set[str], set[str], bool]:
+    """Lo que Appian ve de una clase de smart service: entradas, salidas y si
+    hay algun `@Name` que impida leerlas.
+
+    Entradas: los `set*` anotados con `@Input`. Salidas: los `get*` sin
+    parametros que NO tengan `set*` hermano --la documentacion lo dice al
+    reves y por eso importa: «If you define a corresponding setter method, the
+    getter method is treated as an input»--. En los dos casos el nombre es el
+    del metodo sin su prefijo, LITERAL: `setDocumentoOrigen` da
+    `DocumentoOrigen`, y ahi esta la gracia de leerlo del bytecode.
+
+    El tercer valor avisa de que la lectura NO es fiable: `@Name("Otro")`
+    renombra el ACP y `classfile` lee TIPOS de anotacion, no sus valores, asi
+    que el nombre real no esta a nuestro alcance. Se prefiere declarar que no
+    se ha comprobado antes que inventar un hallazgo.
+    """
+    entradas, setters, getters = set(), set(), set()
+    hay_name = False
+    for m in clase.metodos:
+        if any(a.rsplit(".", 1)[-1] == "Name" for a in m.anotaciones):
+            hay_name = True
+        if m.nombre.startswith("set") and len(m.nombre) > 3:
+            setters.add(m.nombre[3:])
+            if ANOTACION_INPUT in m.anotaciones:
+                entradas.add(m.nombre[3:])
+        elif m.nombre.startswith("get") and len(m.nombre) > 3 and m.descriptor.startswith("()"):
+            getters.add(m.nombre[3:])
+    return entradas, getters - setters, hay_name
+
+
 def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list, *,
               gradle: str | None = None, exclusiones: str = "",
-              decisiones: str = "", lockfile: bool | None = None) -> list[Hallazgo]:
+              decisiones: str = "", lockfile: bool | None = None,
+              claves_del_bundle: set[str] | None = None) -> list[Hallazgo]:
     """`gradle=None` significa «no me han dado el fichero» y salta R-F14; un
     `build.gradle` vacio o sin los ajustes SI es un hallazgo. Son cosas
     distintas y confundirlas tenia un lado barato y otro caro: las llamadas
@@ -603,6 +639,83 @@ def comprobar(datos_contrato: dict, xml_manifiesto: str, clases: list, *,
                          f"declara {clases_xml}")
             )
 
+    # R-F21 · EL TERCER LADO. Lo que Appian publica de un smart service sale
+    # del ACCESOR --«`InputName` and `OutputName` are the camelCase names (or
+    # `@Name` annotated names) of the targets of the getter and setter methods
+    # (after removing the prepended `get-` or `set-`)»--, y hasta aqui nadie lo
+    # leia: el contrato alimentaba a la vez el `.java`, el bundle, la guia del
+    # integrador y las reglas que los juzgan. Cuatro cosas derivadas del mismo
+    # dato coinciden siempre, aunque el bytecode diga otra cosa. Es el defecto
+    # que ya costo un despliegue, con otro disfraz.
+    #
+    # NO se afirma que rompa el despliegue --no consta--; la consecuencia
+    # documentada es peor de encontrar que de sufrir: la misma pagina dice que
+    # sin la clave «the display name is rendered automatically», asi que lo
+    # que desaparece en silencio es la descripcion escrita y el tooltip.
+    if tipo == "smart-service" and clases:
+        nombre_clase = (f"{plugin.get('paquete', '')}.smartservice."
+                        f"{datos_contrato.get('clase', {}).get('nombre', '')}")
+        for c in clases:
+            if c.nombre_clase != nombre_clase:
+                continue
+            del_bytecode, salidas_bytecode, hay_name = acps_del_bytecode(c)
+            if hay_name:
+                hallazgos.append(
+                    Hallazgo("R-F21", "aviso",
+                             f"{c.nombre_clase} usa @Name en algun accesor: ese nombre renombra "
+                             f"el ACP y el lector de .class no lee valores de anotacion, asi que "
+                             f"NO se ha comprobado que contrato, bundle y bytecode coincidan")
+                )
+                break
+            del_contrato = {contrato.nombre_de_acp(e["nombre"]) for e in entradas}
+            if del_bytecode != del_contrato:
+                sobran = sorted(del_bytecode - del_contrato)
+                faltan = sorted(del_contrato - del_bytecode)
+                hallazgos.append(
+                    Hallazgo("R-F21", "error",
+                             f"las entradas del contrato no son las que declara el bytecode: "
+                             f"@Input en la clase da {sorted(del_bytecode)} y el contrato dice "
+                             f"{sorted(del_contrato)}"
+                             + (f"; sobra(n) en la clase {sobran}" if sobran else "")
+                             + (f"; falta(n) en la clase {faltan}" if faltan else "")
+                             + ". Appian publica el nombre del ACCESOR, asi que el bundle y "
+                               "GUIA_INTEGRACION.md --que salen del contrato-- documentan una "
+                               "entrada que no existe")
+                )
+            sin_getter = sorted(
+                contrato.nombre_de_acp(s["nombre"]) for s in salidas
+                if contrato.nombre_de_acp(s["nombre"]) not in salidas_bytecode
+            )
+            if sin_getter:
+                hallazgos.append(
+                    Hallazgo("R-F21", "error",
+                             f"la(s) salida(s) {sin_getter} del contrato no tienen su `get` sin "
+                             f"`set` hermano en {c.nombre_clase}: la clase expone "
+                             f"{sorted(salidas_bytecode)}. Un getter CON setter Appian lo trata "
+                             f"como entrada, no como salida")
+                )
+            if claves_del_bundle is not None:
+                # El bundle contra el BYTECODE, no contra el contrato: si los
+                # dos salieran del contrato esta comprobacion no podria fallar.
+                declaradas = {
+                    k.split(".")[1]
+                    for k in claves_del_bundle
+                    if k.startswith(("input.", "output.")) and k.count(".") >= 2
+                }
+                publicadas = del_bytecode | salidas_bytecode
+                huerfanas = sorted(declaradas - publicadas)
+                if huerfanas:
+                    hallazgos.append(
+                        Hallazgo("R-F21", "error",
+                                 f"el bundle _en_US etiqueta {huerfanas}, que no es ningun ACP "
+                                 f"de la clase: la clase publica {sorted(publicadas)}. Appian "
+                                 f"resuelve `input.<InputName>` por el nombre del accesor sin su "
+                                 f"`set`/`get` --empieza en MAYUSCULA aunque el campo no--, asi "
+                                 f"que esas etiquetas no las lee nadie y el diseñador ve el "
+                                 f"nombre autogenerado, sin descripcion ni tooltip")
+                    )
+            break
+
     if gradle is not None:
         hallazgos += comprobar_guardarrailes(tipo, gradle, exclusiones, decisiones)
 
@@ -661,12 +774,25 @@ def main() -> int:
         # y la traza `UnicodeDecodeError ... 0xff` no le dice a nadie que hacer.
         return contrato.leer_utf8(ruta) if ruta.is_file() else ""
 
+    # El bundle `_en_US`, para el tercer lado de R-F21. `None` --no hay
+    # ninguno-- apaga esa clausula y no la finge: un servlet no lleva bundle.
+    bundles = sorted((raiz / "src" / "main" / "resources").rglob("*_en_US.properties"))
+    claves = None
+    if bundles:
+        claves = {
+            linea.split("=", 1)[0].strip()
+            for b in bundles
+            for linea in contrato.leer_utf8(b).splitlines()
+            if "=" in linea and not linea.lstrip().startswith("#")
+        }
+
     hallazgos = comprobar(
         datos, xml, clases,
         gradle=_texto(raiz / "build.gradle"),
         exclusiones=_texto(raiz / "config" / "spotbugs" / "exclude.xml"),
         decisiones=_texto(raiz / "docs" / "decisiones.md"),
         lockfile=(raiz / "gradle.lockfile").is_file(),
+        claves_del_bundle=claves,
     )
     # PORTANTE `clases`, y no la regla de «todas las unidades a cero»: esta
     # puerta declara tres unidades, asi que `0 clases, 1 entradas, 1 salidas`

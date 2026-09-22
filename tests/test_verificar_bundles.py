@@ -10,10 +10,10 @@ CONTRATO_SS = {
 }
 
 BUNDLE_SS_OK = """name=Ejemplo
-input.documentoOrigen.displayName=Documento origen
-input.documentoOrigen.comment=El documento de entrada
-output.resultado.displayName=Resultado
-output.resultado.comment=El resultado
+input.DocumentoOrigen.displayName=Documento origen
+input.DocumentoOrigen.comment=El documento de entrada
+output.Resultado.displayName=Resultado
+output.Resultado.comment=El resultado
 """
 
 CONTRATO_FN = {
@@ -102,8 +102,8 @@ def test_convenio_de_function_aplicado_a_smart_service_es_error():
     # El error exacto de la guia (auditoria §7.11): generalizar a los smart
     # services el convenio que si rige en las funciones.
     malo = """name=Ejemplo
-smartservice.ejemplo.input.documentoOrigen.description=Documento
-smartservice.ejemplo.output.resultado.description=Resultado
+smartservice.ejemplo.input.DocumentoOrigen.description=Documento
+smartservice.ejemplo.output.Resultado.description=Resultado
 """
     rutas = {"com/raul/appian/ejemplo/ejemplo_en_US.properties": malo}
     assert "R-B02" in reglas(vb.comprobar(CONTRATO_SS, rutas))
@@ -320,14 +320,16 @@ def test_falta_la_clave_description_en_function_es_error():
 # `getErrorOccurred()` --y Appian lee el nombre del ACCESOR--.
 
 def test_una_clave_de_salida_con_la_caja_equivocada_es_error():
-    # El defecto exacto: `resultado` declarado, `Resultado` escrito.
-    malo = BUNDLE_SS_OK.replace("output.resultado.displayName", "output.Resultado.displayName")
+    # El defecto exacto, ahora en su forma real: la clave lleva el nombre del
+    # ACCESOR --`getResultado()` da `Resultado`-- y quien la escribe a mano
+    # copia el del campo Java, `resultado`, que Appian no resuelve nunca.
+    malo = BUNDLE_SS_OK.replace("output.Resultado.displayName", "output.resultado.displayName")
     rutas = {"com/raul/appian/ejemplo/ejemplo_en_US.properties": malo}
     hallazgos = vb.comprobar(CONTRATO_SS, rutas)
     assert "R-B06" in reglas(hallazgos)
     # Y ademas debe sugerir la clave correcta: es un error de una sola letra y
     # el validador tiene el dato para decirlo.
-    assert any("output.resultado.displayName" in h.mensaje for h in hallazgos)
+    assert any("output.Resultado.displayName" in h.mensaje for h in hallazgos)
 
 
 def test_una_clave_de_entrada_inventada_es_error():

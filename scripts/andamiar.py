@@ -12,6 +12,10 @@ import re
 
 import contrato
 
+# La capa 1A, para la puerta de abajo. No hay ciclo: `verificar_framework` solo
+# importa `contrato` y biblioteca estandar, igual que este fichero.
+import verificar_framework
+
 PATRON_MARCADOR = re.compile(r"\{\{(\w+)\}\}")
 
 # Anotaciones de conveniencia: fijan categoria y paleta a la vez y hacen
@@ -611,6 +615,35 @@ def generar(
     return escritos
 
 
+def errores_de_contrato(datos: dict) -> list[str]:
+    """Las reglas de la capa 1A que NO necesitan ni manifiesto ni bytecode.
+
+    Existe porque una de ellas era INALCANZABLE justo en el caso que
+    diagnostica. `R-F03` sabe desde el contrato que una salida llamada
+    `errorOccurred` choca con el miembro que la plantilla ya declara y que el
+    `.java` saldria con el campo y el getter duplicados; y eso NO COMPILA
+    --`variable errorOccurred is already defined`, dos errores de javac--. Pero
+    la capa 1A corre en el paso 5 y exige clases compiladas: «analizar cero
+    clases NO es verificar». El defecto que la regla diagnostica impide
+    compilar, asi que la regla no llegaba a correr nunca donde hacia falta y
+    quien andamiaba se encontraba con el error de javac sin el diagnostico que
+    ya existia, escrito y probado, a un paso de distancia.
+
+    Es la cuarta forma del patron que la auditoria de reglas persigue: no
+    circular ni apagada por un campo, sino apagada POR EL PROPIO DEFECTO que
+    detecta.
+
+    Se invocan las reglas REALES --con el manifiesto vacio, que es lo que apaga
+    las que lo necesitan-- y no una copia: un segundo juez que dedujera lo
+    mismo del mismo dato coincidiria siempre y no podria fallar nunca.
+    """
+    return [
+        f"{h.regla}: {h.mensaje}"
+        for h in verificar_framework.comprobar(datos, "", [])
+        if h.severidad == "error"
+    ]
+
+
 def main() -> int:
     import sys
 
@@ -627,6 +660,15 @@ def main() -> int:
         print("El contrato esta incompleto; no se genera nada:")
         for f in faltantes:
             print(f"  FALTA {f}")
+        return 1
+    rotos = errores_de_contrato(datos)
+    if rotos:
+        print(
+            "El contrato esta completo, pero las reglas del framework ya encuentran "
+            "errores en el; no se genera nada:"
+        )
+        for r in rotos:
+            print(f"  ERROR {r}")
         return 1
     plantillas = pathlib.Path(__file__).resolve().parents[1] / "assets" / "plantillas"
     escritos = generar(datos, plantillas, pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[1]))

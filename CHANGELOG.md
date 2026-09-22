@@ -3,6 +3,44 @@
 Por versión, la más reciente arriba. Lo que afecta a plug-ins ya generados va al principio de su
 entrada.
 
+## 2026-09-22 · versión 0.2.4 — el nombre que Appian publica sale del accesor
+
+Dos correspondencias que nadie miraba, y las dos de la misma familia: **una comprobación cuyos dos
+lados salen del mismo dato coincide siempre, y por eso no puede fallar nunca.** El contrato
+alimentaba a la vez la clase Java, el bundle, la guía del integrador y las reglas que los juzgan.
+
+Lo que afecta a plug-ins **ya generados**:
+
+- **En smart services, las claves del bundle cambian de caja.** Appian publica cada entrada y cada
+  salida por el nombre de su ACCESOR sin el `set`/`get` —`setDocumentoOrigen` se publica como
+  `DocumentoOrigen`—, así que la clave es `input.DocumentoOrigen.displayName` y no
+  `input.documentoOrigen.displayName`. Un plug-in con la caja antigua **despliega igual**: lo que se
+  pierde, en silencio, es la descripción redactada y el tooltip, porque Appian no encuentra la clave
+  y se inventa el nombre. La regla nueva `R-F21` lo señala y el andamiaje ya escribe la clave
+  correcta. Los smart services generados antes de esta versión pasan a NOT_READY hasta corregirla.
+- **El valor del `displayName` va partido por sus mayúsculas.** `documentoOrigen` da
+  «Documento Origen» en vez del identificador crudo, que le dejaba al diseñador algo peor que no
+  poner la clave.
+- **Un contrato que pide algo imposible se rechaza en el ANDAMIAJE**, antes de escribir ningún
+  fichero. Afecta a quien vuelva a andamiar un contrato que declare una salida chocando con un
+  miembro de la plantilla (`R-F03`), un primitivo `OPTIONAL` (`R-F02`) o una firma que rompe
+  procesos vivos (`R-F08`).
+
+Regla nueva:
+
+| Regla | Qué mira | Por qué no se veía |
+|---|---|---|
+| `R-F21` | En smart services: que las entradas del BYTECODE (`set*` con `@Input`) sean las del contrato, que cada salida tenga su `get*` sin `set*` hermano, y que toda clave `input.X`/`output.X` del bundle nombre un ACP que la clase publica de verdad | Ninguna capa leía los accesores para esto. El flujo exige editar el `.java` a mano, y ahí es justo donde artefacto y contrato pueden separarse; el bundle y la guía salían del contrato, así que coincidían con él aunque la clase dijera otra cosa |
+
+Además:
+
+- **`R-F02`, `R-F03` y `R-F08` corren también en el andamiaje.** Solo necesitan el contrato, y
+  esperar al paso de verificación era tarde: esa capa exige clases compiladas, y un contrato que
+  genera código que no compila nunca llegaba a ella. Se invocan las reglas reales, no una copia.
+- `R-F21` declara que **no** ha comprobado nada cuando algún accesor lleva `@Name`: esa anotación
+  renombra el ACP y el lector de `.class` no lee valores de anotación. Antes que inventar un
+  hallazgo, se dice que no se sabe.
+
 ## 2026-09-22 · versión 0.2.3 — lo que Appian resuelve al desplegar
 
 Una auditoría de la familia entera de fallo que destapó la 0.2.2: **todo lo que el cargador de

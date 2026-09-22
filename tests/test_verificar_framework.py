@@ -662,3 +662,147 @@ def test_R_F20_javax_xml_bind_es_el_correcto():
     clases = [clase("com.raul.appian.ejemplo.T")]
     clases[0].tipos_referenciados = {"javax.xml.bind.annotation.XmlType"}
     assert "R-F20" not in reglas(vf.comprobar(CONTRATO_BASE, XML_BASE, clases))
+
+
+# ---------------------------------------------------------------------------
+# R-F21 · EL TERCER LADO
+#
+# Lo que Appian publica de un smart service sale del ACCESOR, no del contrato:
+# «`InputName` and `OutputName` are the camelCase names (or `@Name` annotated
+# names) of the targets of the getter and setter methods (after removing the
+# prepended `get-` or `set-`)» (*Smart Service Plug-ins > Internationalization*).
+#
+# Hasta esta regla NADIE leia el bytecode para eso. El contrato alimentaba a la
+# vez el `.java`, el bundle, `GUIA_INTEGRACION.md` y las reglas que los juzgan:
+# cuatro cosas derivadas del mismo dato coinciden siempre, aunque la clase diga
+# otra cosa. Es la familia de defecto que ya costo un despliegue.
+# ---------------------------------------------------------------------------
+
+CLASE_SS = "com.raul.appian.ejemplo.smartservice.EjemploSmartService"
+INPUT = vf.ANOTACION_INPUT
+
+
+def _ss(metodos):
+    return [clase(CLASE_SS, metodos=metodos)]
+
+
+def _metodos_correctos():
+    return [
+        classfile.MetodoLeido("setDoc", "(Ljava/lang/Long;)V", {INPUT}),
+        classfile.MetodoLeido("getResultado", "()Ljava/lang/String;", set()),
+    ]
+
+
+def test_R_F21_calla_cuando_bytecode_contrato_y_bundle_dicen_lo_mismo():
+    hallazgos = vf.comprobar(
+        CONTRATO_BASE, XML_BASE, _ss(_metodos_correctos()),
+        claves_del_bundle={"input.Doc.displayName", "input.Doc.comment",
+                           "output.Resultado.displayName", "output.Resultado.comment"},
+    )
+    assert "R-F21" not in reglas(hallazgos)
+
+
+def test_R_F21_ve_un_input_que_el_java_renombro_sin_tocar_el_contrato():
+    """El caso del hueco declarado: el flujo EXIGE editar el .java a mano, y
+    ahi es donde artefacto y contrato pueden divergir de verdad."""
+    metodos = [classfile.MetodoLeido("setRutaDeOrigen", "(Ljava/lang/String;)V", {INPUT}),
+               classfile.MetodoLeido("getResultado", "()Ljava/lang/String;", set())]
+    hallazgos = [h for h in vf.comprobar(CONTRATO_BASE, XML_BASE, _ss(metodos))
+                 if h.regla == "R-F21"]
+    assert hallazgos and hallazgos[0].severidad == "error"
+    assert "RutaDeOrigen" in hallazgos[0].mensaje and "Doc" in hallazgos[0].mensaje
+
+
+def test_R_F21_ve_la_clave_del_bundle_que_Appian_no_resuelve():
+    """El defecto que arrastraban TODOS los smart services generados: el bundle
+    escrito con el nombre del campo Java (`input.doc`) y no con el del ACP
+    (`input.Doc`). No rompe el despliegue --Appian autogenera el display name--
+    y por eso se pasa entero: lo que desaparece en silencio es la descripcion
+    escrita y el tooltip."""
+    hallazgos = [h for h in vf.comprobar(
+        CONTRATO_BASE, XML_BASE, _ss(_metodos_correctos()),
+        claves_del_bundle={"input.doc.displayName", "output.Resultado.displayName"},
+    ) if h.regla == "R-F21"]
+    assert hallazgos and hallazgos[0].severidad == "error"
+    assert "doc" in hallazgos[0].mensaje
+
+
+def test_R_F21_ve_una_salida_sin_getter():
+    metodos = [classfile.MetodoLeido("setDoc", "(Ljava/lang/Long;)V", {INPUT})]
+    hallazgos = [h for h in vf.comprobar(CONTRATO_BASE, XML_BASE, _ss(metodos))
+                 if h.regla == "R-F21"]
+    assert any("Resultado" in h.mensaje for h in hallazgos)
+
+
+def test_R_F21_no_toma_por_salida_un_getter_que_tiene_setter():
+    """«If you define a corresponding setter method, the getter method is
+    treated as an input» — la documentacion lo dice al reves de lo intuitivo, y
+    tomar ese getter por salida daria un verde que Appian no comparte."""
+    metodos = [classfile.MetodoLeido("setDoc", "(Ljava/lang/Long;)V", {INPUT}),
+               classfile.MetodoLeido("getDoc", "()Ljava/lang/Long;", set()),
+               classfile.MetodoLeido("setResultado", "(Ljava/lang/String;)V", set()),
+               classfile.MetodoLeido("getResultado", "()Ljava/lang/String;", set())]
+    hallazgos = [h for h in vf.comprobar(CONTRATO_BASE, XML_BASE, _ss(metodos))
+                 if h.regla == "R-F21"]
+    assert any("Resultado" in h.mensaje for h in hallazgos), (
+        "getResultado tiene setResultado, asi que Appian lo trata como entrada "
+        "y la salida del contrato se queda sin getter"
+    )
+
+
+def test_R_F21_declara_que_NO_ha_comprobado_cuando_hay_un_Name():
+    """`@Name("Otro")` renombra el ACP y el lector de .class lee TIPOS de
+    anotacion, no valores. Antes que inventar un hallazgo, se dice que no se
+    ha comprobado: es lo mismo que hace R-F08 cuando no hay version anterior."""
+    metodos = [classfile.MetodoLeido(
+        "setLoQueSea", "(Ljava/lang/Long;)V",
+        {INPUT, "com.appiancorp.suiteapi.process.framework.Name"})]
+    hallazgos = [h for h in vf.comprobar(CONTRATO_BASE, XML_BASE, _ss(metodos))
+                 if h.regla == "R-F21"]
+    assert len(hallazgos) == 1 and hallazgos[0].severidad == "aviso"
+    assert "NO se ha comprobado" in hallazgos[0].mensaje
+
+
+def test_R_F21_no_se_aplica_fuera_de_los_smart_services():
+    datos = {**CONTRATO_BASE, "plugin": {**CONTRATO_BASE["plugin"], "tipo": "servlet"}}
+    metodos = [classfile.MetodoLeido("setCualquierCosa", "(Ljava/lang/String;)V", {INPUT})]
+    assert "R-F21" not in reglas(vf.comprobar(datos, "", _ss(metodos)))
+
+
+def test_R_F21_lee_los_accesores_de_un_class_de_verdad(tmp_path):
+    """El guardian que un fixture a mano no puede dar: si `acps_del_bytecode`
+    dejara de ver la anotacion, o cortara mal el prefijo, los tests de arriba
+    seguirian verdes sobre `MetodoLeido` construidos aqui. Este compila una
+    sonda y la lee con el lector real, igual que el guardian de R-A05."""
+    import shutil
+    import subprocess
+    if shutil.which("javac") is None:
+        pytest.skip("javac no esta en el PATH")
+    # El paquete REAL del SDK: la regla busca el nombre cualificado, y una
+    # anotacion `Input` de cualquier otro paquete no es la de Appian. Esta
+    # sonda lo comprueba de paso.
+    paq = tmp_path / "com" / "appiancorp" / "suiteapi" / "process" / "framework"
+    paq.mkdir(parents=True)
+    (paq / "Input.java").write_text(
+        "package com.appiancorp.suiteapi.process.framework;\n"
+        "import java.lang.annotation.*;\n"
+        "@Retention(RetentionPolicy.RUNTIME) @Target(ElementType.METHOD)\n"
+        "public @interface Input {}\n", encoding="utf-8")
+    (tmp_path / "Sonda.java").write_text(
+        "package ap;\n"
+        "import com.appiancorp.suiteapi.process.framework.Input;\n"
+        "public class Sonda {\n"
+        "  private String rutaDeOrigen;\n"
+        "  private Long total;\n"
+        "  @Input public void setRutaDeOrigen(String v) { this.rutaDeOrigen = v; }\n"
+        "  public Long getTotal() { return total; }\n"
+        "  public String getRutaDeOrigen() { return rutaDeOrigen; }\n"
+        "}\n", encoding="utf-8")
+    destino = tmp_path / "out"
+    subprocess.run(["javac", "--release", "17", "-d", str(destino),
+                    str(paq / "Input.java"), str(tmp_path / "Sonda.java")], check=True)
+    leida = classfile.leer(destino / "ap" / "Sonda.class")
+    entradas, salidas, hay_name = vf.acps_del_bytecode(leida)
+    assert entradas == {"RutaDeOrigen"}, "el @Input se lee del bytecode, con su mayuscula"
+    assert salidas == {"Total"}, "getRutaDeOrigen tiene setter: Appian lo trata como entrada"
+    assert hay_name is False
